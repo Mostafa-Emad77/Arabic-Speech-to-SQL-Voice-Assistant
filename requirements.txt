@@ -1,0 +1,11 @@
+Flask
+mysql-connector-python
+SpeechRecognition
+PyAudio
+python-dotenv
+torch
+transformers
+sounddevice
+soundfile
+requests
+huggingface_hub
