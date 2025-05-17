@@ -34,13 +34,11 @@ An open-source Arabic Voice Assistant built with Python and MySQL, featuring voi
 app.py                    # Main Flask application (web server)
 arabic_voice_assistant.py # Core logic for speech recognition and assistant responses
 create_dirs.py            # Utility for creating required directories
-__pycache__/              # Python bytecode cache
 
 templates/
   index.html              # Main web interface template
   package.json            # (If used for frontend dependencies)
 
-db_config.py              # MySQL database configuration
 README.md                 # Project documentation
 requirements.txt          # Python dependencies (create if missing)
 ```
