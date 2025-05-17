@@ -15,8 +15,7 @@ An open-source Arabic Voice Assistant built with Python and MySQL, featuring voi
 - [Environment Variables Setup](#environment-variables-setup)
 - [Usage](#usage)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+
 
 ---
 
