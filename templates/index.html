@@ -23,6 +23,9 @@
             margin-top: 20px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
+        #queryResult {
+            white-space: pre-line;
+        }
         .record-btn {
             width: 60px;
             height: 60px;
@@ -231,7 +234,7 @@
             function displayResults(data) {
                 transcribedText.textContent = data.input;
                 sqlQuery.textContent = data.sql;
-                queryResult.innerHTML = data.response.replace(/\n/g, '<br>');
+                queryResult.textContent = data.response;
                 resultContainer.style.display = 'block';
                 
                 // Reset audio button
