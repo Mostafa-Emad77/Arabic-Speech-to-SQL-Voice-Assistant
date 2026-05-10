@@ -13,7 +13,6 @@ __pycache__/
 
 # Frontend dependencies and caches
 node_modules/
-templates/node_modules/
 frontend/node_modules/
 
 # OS files
