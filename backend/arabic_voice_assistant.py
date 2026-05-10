@@ -14,7 +14,7 @@ from database import (
 )
 from response_formatter import format_response
 from speech import record_audio, transcribe_audio
-from sql_engine import check_lm_studio_connection, text_to_sql
+from sql_engine import check_ollama_connection, text_to_sql
 from tts_engine import (
     generate_speech_for_web,
     generate_speech_with_local_model,
@@ -52,7 +52,7 @@ def initialize_models() -> tuple[Any, None, None, Any | None, Any | None]:
     transcriber = client
 
     print("Loading Arabic Text-to-SQL model...")
-    check_lm_studio_connection()
+    check_ollama_connection()
     model = None
     tokenizer = None
 

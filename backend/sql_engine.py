@@ -1,4 +1,3 @@
-import json
 import os
 import re
 from typing import Any
@@ -26,38 +25,50 @@ system_message = (
 )
 
 
-def get_lm_studio_base_url() -> str:
-    return os.getenv("LM_STUDIO_BASE_URL", "http://127.0.0.1:1234").rstrip("/")
+def get_ollama_base_url() -> str:
+    return os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 
 
-def check_lm_studio_connection() -> None:
-    base_url = get_lm_studio_base_url()
+def get_ollama_model() -> str:
+    return os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+
+def check_ollama_connection() -> None:
+    base_url = get_ollama_base_url()
     try:
-        response = requests.get(f"{base_url}/v1/models")
+        response = requests.get(f"{base_url}/api/tags")
         if response.status_code == 200:
-            print("Successfully connected to LM Studio server")
+            print("Successfully connected to Ollama server")
         else:
-            print(f"Warning: LM Studio server returned status code {response.status_code}")
+            print(f"Warning: Ollama server returned status code {response.status_code}")
     except Exception as e:
-        print(f"Warning: Could not connect to LM Studio server: {e}")
+        print(f"Warning: Could not connect to Ollama server: {e}")
 
 
 def generate_resp(messages: list[dict[str, str]], model: Any = None, tokenizer: Any = None) -> str:
-    api_url = f"{get_lm_studio_base_url()}/v1/chat/completions"
+    api_url = f"{get_ollama_base_url()}/api/chat"
 
     try:
         payload = {
+            "model": get_ollama_model(),
             "messages": messages,
-            "temperature": 0.1,
-            "top_p": 0.8,
-            "max_tokens": 1024,
+            "stream": False,
+            "options": {
+                "temperature": 0.1,
+                "top_p": 0.8,
+                "num_predict": 1024,
+            },
         }
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+        response = requests.post(api_url, json=payload)
 
         if response.status_code == 200:
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            message_content = result.get("message", {}).get("content", "")
+            if message_content:
+                return message_content
+
+            print("Ollama response did not include message content")
+            return "SELECT * FROM employees LIMIT 5;"
 
         print(f"API request failed with status code {response.status_code}: {response.text}")
         return "SELECT * FROM employees LIMIT 5;"

@@ -7,9 +7,11 @@ import logging
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(PROJECT_ROOT, "frontend"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
