@@ -1,0 +1,126 @@
+import os
+from typing import Any
+
+from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
+
+from database import (
+    connect_to_db,
+    example_db_schema,
+    execute_query,
+    get_db_schema,
+    test_mode_query,
+    validate_read_only_sql,
+)
+from response_formatter import format_response
+from speech import record_audio, transcribe_audio
+from sql_engine import check_ollama_connection, text_to_sql
+from tts_engine import (
+    generate_speech_for_web,
+    generate_speech_with_local_model,
+    initialize_local_arabic_tts,
+)
+
+# Load environment variables from .env file
+load_dotenv()
+
+__all__ = [
+    "connect_to_db",
+    "example_db_schema",
+    "execute_query",
+    "format_response",
+    "generate_speech_for_web",
+    "generate_speech_with_local_model",
+    "get_db_schema",
+    "initialize_models",
+    "initialize_local_arabic_tts",
+    "main",
+    "record_audio",
+    "test_mode_query",
+    "text_to_sql",
+    "transcribe_audio",
+    "validate_read_only_sql",
+]
+
+def initialize_models() -> tuple[Any, None, None, Any | None, Any | None]:
+    print("Loading Whisper model for speech recognition...")
+    api_key = os.getenv("FAL_AI_API_KEY")
+    client = InferenceClient(
+        provider="fal-ai",
+        api_key=api_key,
+    )
+    transcriber = client
+
+    print("Loading Arabic Text-to-SQL model...")
+    check_ollama_connection()
+    model = None
+    tokenizer = None
+
+    tts_processor, tts_model = initialize_local_arabic_tts()
+    return transcriber, model, tokenizer, tts_processor, tts_model
+
+
+def main() -> None:
+    transcriber, sql_model, tokenizer, tts_processor, tts_model = initialize_models()
+    db_connection = connect_to_db()
+
+    test_mode = False
+    if not db_connection:
+        print("Database connection failed. Running in TEST MODE.")
+        test_mode = True
+        db_schema = example_db_schema
+    else:
+        db_schema = get_db_schema(db_connection)
+        print("Database schema loaded successfully.")
+
+    while True:
+        try:
+            print("Do you want to use voice input (v) or text input (t)?")
+            input_mode = input().lower()
+
+            if input_mode == "v":
+                audio_file = record_audio()
+                arabic_text = transcribe_audio(transcriber, audio_file)
+                print(f"Transcribed text: {arabic_text}")
+            else:
+                print("Enter your question in Arabic:")
+                arabic_text = input()
+                print(f"Text input: {arabic_text}")
+
+            sql_query = text_to_sql(sql_model, tokenizer, arabic_text, db_schema)
+            print(f"Generated SQL: {sql_query}")
+
+            is_safe, validation_error = validate_read_only_sql(sql_query)
+            if not is_safe:
+                print(f"Blocked SQL query: {validation_error}")
+                results, column_names = None, None
+            elif test_mode:
+                results, column_names = test_mode_query(sql_query)
+            else:
+                results, column_names = execute_query(db_connection, sql_query)
+
+            response = format_response(results, column_names)
+            print(f"Response: {response}")
+
+            print("Do you want to hear the response? (y/n)")
+            if input().lower() == "y":
+                if tts_processor is not None and tts_model is not None:
+                    generate_speech_with_local_model(tts_processor, tts_model, response)
+                else:
+                    print("Error: TTS model not available")
+
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            response = "عذراً، حدث خطأ أثناء معالجة طلبك."
+            print(response)
+
+        print("Do you want to ask another question? (y/n)")
+        if input().lower() != "y":
+            break
+
+    if not test_mode:
+        db_connection.close()
+
+
+if __name__ == "__main__":
+    main()
