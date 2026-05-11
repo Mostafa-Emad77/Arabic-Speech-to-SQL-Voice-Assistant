@@ -6,4 +6,6 @@ transformers
 sounddevice
 soundfile
 requests
-huggingface_hub
+silma-tts
+faster-whisper
+sqlglot

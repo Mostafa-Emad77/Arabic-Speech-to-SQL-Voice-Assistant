@@ -1,10 +1,15 @@
 import os
-from flask import Flask, render_template, request, jsonify
+import csv
+import io
+
+from flask import Flask, Response, render_template, request, jsonify
 import arabic_voice_assistant as ava
 import base64
 import tempfile
 import logging
 from dotenv import load_dotenv
+
+from security import load_security_config, sanitize_user_prompt, validate_user_prompt
 
 # Load environment variables from .env file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +19,7 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 app = Flask(__name__, template_folder=os.path.join(PROJECT_ROOT, "frontend"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+SECURITY_CONFIG = load_security_config()
 
 # Initialize models and database connection
 transcriber, sql_model, tokenizer, tts_processor, tts_model = ava.initialize_models()
@@ -38,10 +44,11 @@ def index():
 
 @app.route('/process_text', methods=['POST'])
 def process_text():
-    arabic_text = request.form.get('text', '')
+    arabic_text = sanitize_user_prompt(request.form.get('text', ''))
 
-    if not arabic_text:
-        return jsonify({'error': 'No text received'}), 400
+    is_prompt_safe, prompt_error = validate_user_prompt(arabic_text, SECURITY_CONFIG)
+    if not is_prompt_safe:
+        return jsonify({'error': prompt_error}), 400
 
     # Convert to SQL
     sql_query = ava.text_to_sql(sql_model, tokenizer, arabic_text, db_schema)
@@ -54,16 +61,30 @@ def process_text():
     # Execute query
     if test_mode:
         results, column_names = ava.test_mode_query(sql_query)
+        metadata = {
+            'row_limit': None,
+            'returned_rows': len(results),
+            'overflow': False,
+            'csv_export_available': False,
+            'export_row_limit': None,
+        }
     else:
-        results, column_names = ava.execute_query(db_connection, sql_query)
+        results, column_names, metadata = ava.execute_query_with_metadata(
+            db_connection,
+            sql_query,
+            max_rows=SECURITY_CONFIG.max_result_rows,
+            enable_csv_export=True,
+            export_row_limit=SECURITY_CONFIG.max_export_rows,
+        )
 
     # Format response
-    response = ava.format_response(results, column_names)
+    response = ava.format_response(results, column_names, metadata)
 
     return jsonify({
         'input': arabic_text,
         'sql': sql_query,
-        'response': response
+        'response': response,
+        'metadata': metadata,
     })
 
 @app.route('/process_audio', methods=['POST'])
@@ -85,7 +106,11 @@ def process_audio():
         temp_file.close()
 
         # Transcribe audio
-        arabic_text = ava.transcribe_audio(transcriber, temp_file.name)
+        arabic_text = sanitize_user_prompt(ava.transcribe_audio(transcriber, temp_file.name))
+
+        is_prompt_safe, prompt_error = validate_user_prompt(arabic_text, SECURITY_CONFIG)
+        if not is_prompt_safe:
+            return jsonify({'error': prompt_error}), 400
 
         # Convert to SQL
         sql_query = ava.text_to_sql(sql_model, tokenizer, arabic_text, db_schema)
@@ -98,16 +123,30 @@ def process_audio():
         # Execute query
         if test_mode:
             results, column_names = ava.test_mode_query(sql_query)
+            metadata = {
+                'row_limit': None,
+                'returned_rows': len(results),
+                'overflow': False,
+                'csv_export_available': False,
+                'export_row_limit': None,
+            }
         else:
-            results, column_names = ava.execute_query(db_connection, sql_query)
+            results, column_names, metadata = ava.execute_query_with_metadata(
+                db_connection,
+                sql_query,
+                max_rows=SECURITY_CONFIG.max_result_rows,
+                enable_csv_export=True,
+                export_row_limit=SECURITY_CONFIG.max_export_rows,
+            )
 
         # Format response
-        response = ava.format_response(results, column_names)
+        response = ava.format_response(results, column_names, metadata)
 
         return jsonify({
             'input': arabic_text,
             'sql': sql_query,
-            'response': response
+            'response': response,
+            'metadata': metadata,
         })
     except Exception as e:
         logger.exception("Audio processing failed: %s", e)
@@ -133,6 +172,47 @@ def text_to_speech():
     except Exception as e:
         logger.exception("TTS generation failed: %s", e)
         return jsonify({'error': 'Failed to generate speech'}), 500
+
+
+@app.route('/export_csv', methods=['POST'])
+def export_csv():
+    sql_query = request.form.get('sql', '').strip()
+    if not sql_query:
+        return jsonify({'error': 'No SQL query received'}), 400
+
+    is_safe, validation_error = ava.validate_read_only_sql(sql_query)
+    if not is_safe:
+        return jsonify({'error': validation_error}), 400
+
+    if test_mode:
+        results, column_names = ava.test_mode_query(sql_query)
+        metadata = {'overflow': False, 'row_limit': None, 'returned_rows': len(results)}
+    else:
+        results, column_names, metadata = ava.execute_query_with_metadata(
+            db_connection,
+            sql_query,
+            max_rows=SECURITY_CONFIG.max_export_rows,
+            enable_csv_export=False,
+            export_row_limit=SECURITY_CONFIG.max_export_rows,
+        )
+
+    if results is None or column_names is None:
+        return jsonify({'error': 'Failed to export query results'}), 400
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(column_names)
+    writer.writerows(results)
+
+    csv_content = output.getvalue()
+    output.close()
+
+    response = Response(csv_content, mimetype='text/csv; charset=utf-8')
+    response.headers['Content-Disposition'] = 'attachment; filename="query_results.csv"'
+    response.headers['X-Export-Truncated'] = 'true' if metadata.get('overflow') else 'false'
+    if metadata.get('row_limit'):
+        response.headers['X-Export-Row-Limit'] = str(metadata['row_limit'])
+    return response
 
 if __name__ == '__main__':
     debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"

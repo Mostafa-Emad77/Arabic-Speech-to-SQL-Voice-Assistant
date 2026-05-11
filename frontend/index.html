@@ -1,284 +1,1426 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>المساعد الصوتي العربي</title>
-    <!-- Bootstrap RTL CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.rtl.min.css">
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f8f9fa;
-        }
-        .main-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .result-container {
-            background-color: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        #queryResult {
-            white-space: pre-line;
-        }
-        .record-btn {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            font-size: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto;
-        }
-        .record-btn:hover {
-            background-color: #c82333;
-        }
-        .recording {
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>فَهِيم — مساعد الاستعلامات الصوتي</title>
+  <meta name="description" content="تحدّث بالعربية، نحوّل صوتك إلى استعلام SQL." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Tajawal:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ════════════════════════════════════════════════════════════════
+       Tokens
+       ════════════════════════════════════════════════════════════════ */
+    :root {
+      --paper:        oklch(0.975 0.008 85);
+      --paper-2:      oklch(0.955 0.012 85);
+      --ink:          oklch(0.18  0.01  60);
+      --ink-2:        oklch(0.38  0.012 60);
+      --ink-3:        oklch(0.55  0.012 60);
+      --line:         oklch(0.86  0.012 75);
+      --line-soft:    oklch(0.92  0.01  75);
+
+      --emerald:      oklch(0.55 0.12 165);
+      --emerald-2:    oklch(0.48 0.12 165);
+      --emerald-tint: oklch(0.94 0.04 165);
+      --emerald-deep: oklch(0.32 0.09 165);
+      --coral:        oklch(0.62 0.18  25);
+      --coral-2:      oklch(0.5  0.18  25);
+      --coral-tint:   oklch(0.94 0.05  25);
+
+      --code-bg:      oklch(0.18 0.012 250);
+      --code-bg-2:    oklch(0.23 0.013 250);
+      --code-fg:      oklch(0.92 0.01  90);
+      --code-mute:    oklch(0.6  0.015 250);
+      --code-key:     oklch(0.78 0.13  20);
+      --code-str:     oklch(0.82 0.13 140);
+      --code-num:     oklch(0.82 0.11  60);
+
+      --f-display: "Tajawal", "IBM Plex Sans Arabic", system-ui, sans-serif;
+      --f-body:    "IBM Plex Sans Arabic", "Tajawal", system-ui, sans-serif;
+      --f-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+      --r-md: 14px;
+      --r-lg: 22px;
+      --r-xl: 28px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+    textarea { font: inherit; color: inherit; }
+    :focus-visible { outline: 2px solid var(--emerald); outline-offset: 3px; border-radius: 6px; }
+
+    body {
+      font-family: var(--f-body);
+      color: var(--ink);
+      background: var(--paper);
+      min-height: 100dvh;
+      line-height: 1.55;
+      background-image:
+        radial-gradient(1100px 700px at 85% -15%, oklch(0.99 0.03 80 / 0.7), transparent 60%),
+        radial-gradient(900px 800px at -10% 110%, oklch(0.94 0.06 165 / 0.45), transparent 55%),
+        radial-gradient(oklch(0 0 0 / 0.045) 1px, transparent 1.4px);
+      background-size: auto, auto, 22px 22px;
+    }
+
+    .shell {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 22px 96px;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       Top bar
+       ════════════════════════════════════════════════════════════════ */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; padding-block: 6px 22px;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      font-family: var(--f-display); font-weight: 700;
+    }
+    .brand-mark {
+      width: 34px; height: 34px; border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 30%, oklch(1 0 0 / 0.8), transparent 55%),
+        var(--emerald);
+      box-shadow: 0 0 0 1px oklch(0 0 0 / 0.06), 0 6px 14px -6px var(--emerald);
+      position: relative;
+    }
+    .brand-mark::after {
+      content: ""; position: absolute; inset: 6px; border-radius: 50%;
+      border: 1.5px solid oklch(1 0 0 / 0.7);
+    }
+    .brand-name { font-size: 19px; letter-spacing: -0.01em; }
+    .brand-sub {
+      font-family: var(--f-mono); font-size: 11px;
+      color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .status-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 999px;
+      background: var(--paper-2); border: 1px solid var(--line);
+      font-family: var(--f-mono); font-size: 11px;
+      letter-spacing: 0.06em; color: var(--ink-2);
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--emerald);
+      box-shadow: 0 0 0 3px oklch(0.55 0.12 165 / 0.18);
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       STAGE — voice-flagship hero
+       ════════════════════════════════════════════════════════════════ */
+    .stage {
+      position: relative;
+      padding: 36px 28px 56px;
+      text-align: center;
+      border-radius: var(--r-xl);
+      overflow: hidden;
+      background:
+        radial-gradient(80% 70% at 50% 40%, oklch(1 0 0 / 0.7), oklch(1 0 0 / 0.25) 65%, transparent 100%);
+      border: 1px solid var(--line-soft);
+      box-shadow: 0 30px 80px -50px oklch(0 0 0 / 0.25);
+    }
+    .stage::before {
+      /* concentric pattern behind mic, hinting at sound */
+      content: "";
+      position: absolute; inset: 0;
+      background-image:
+        radial-gradient(circle at 50% 56%, transparent 0 110px,
+          oklch(0 0 0 / 0.04) 110px 111px, transparent 111px 170px,
+          oklch(0 0 0 / 0.035) 170px 171px, transparent 171px 240px,
+          oklch(0 0 0 / 0.025) 240px 241px, transparent 241px 320px,
+          oklch(0 0 0 / 0.02) 320px 321px, transparent 321px 410px,
+          oklch(0 0 0 / 0.015) 410px 411px);
+      pointer-events: none;
+      mask-image: radial-gradient(60% 60% at 50% 56%, #000 30%, transparent 80%);
+    }
+
+    .stage-eyebrow {
+      font-family: var(--f-mono); font-size: 12px;
+      letter-spacing: 0.22em; color: var(--ink-3);
+      text-transform: uppercase;
+      display: inline-flex; align-items: center; gap: 12px;
+      margin-bottom: 18px;
+    }
+    .stage-eyebrow::before, .stage-eyebrow::after {
+      content: ""; width: 22px; height: 1px; background: var(--ink-3); opacity: 0.6;
+    }
+
+    h1.stage-title {
+      font-family: var(--f-display);
+      font-weight: 900;
+      font-size: clamp(38px, 5.8vw, 64px);
+      line-height: 1.04;
+      letter-spacing: -0.015em;
+      margin: 0 0 14px;
+      text-wrap: balance;
+    }
+    h1.stage-title em {
+      font-style: normal; color: var(--emerald-2); position: relative;
+      white-space: nowrap;
+    }
+    h1.stage-title em::after {
+      content: ""; position: absolute; inset-inline: 0; bottom: 0.05em;
+      height: 0.18em; background: var(--emerald-tint);
+      z-index: -1; border-radius: 2px;
+    }
+    .stage-sub {
+      font-size: clamp(15px, 1.55vw, 18px);
+      color: var(--ink-2);
+      max-width: 52ch; margin: 0 auto 36px;
+      text-wrap: pretty;
+    }
+
+    /* ── Mic: the flagship element ───────────────────────────────── */
+    .mic-stage {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 22px;
+      margin-bottom: 8px;
+    }
+    .mic-wrap {
+      position: relative;
+      width: 240px; height: 240px;
+      display: grid; place-items: center;
+    }
+    /* breathing halo while idle */
+    .mic-halo {
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle, oklch(0.55 0.12 165 / 0.22), transparent 65%);
+      animation: breathe 3.6s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(0.92); opacity: 0.6; }
+      50%      { transform: scale(1.05); opacity: 1; }
+    }
+    .mic-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      pointer-events: none;
+    }
+    .mic-ring.r1 { inset: 12px; opacity: 0.9; }
+    .mic-ring.r2 { inset: -8px; opacity: 0.55; }
+    .mic-ring.r3 { inset: -28px; opacity: 0.3; }
+
+    .mic-btn {
+      position: relative;
+      width: 184px; height: 184px;
+      border-radius: 50%;
+      background: linear-gradient(180deg, oklch(0.28 0.012 60), oklch(0.16 0.01 60));
+      color: var(--paper);
+      display: grid; place-items: center;
+      box-shadow:
+        0 1px 0 oklch(1 0 0 / 0.18) inset,
+        0 0 0 10px oklch(1 0 0 / 0.55),
+        0 0 0 11px oklch(0 0 0 / 0.06),
+        0 30px 60px -20px oklch(0 0 0 / 0.5);
+      transition: transform .25s cubic-bezier(.2,.8,.2,1), background .3s, box-shadow .3s;
+      z-index: 2;
+    }
+    .mic-btn:hover { transform: scale(1.03); }
+    .mic-btn:active { transform: scale(0.97); }
+    .mic-btn svg.mic-glyph { width: 64px; height: 64px; }
+
+    /* RECORDING ───────────────────────────────────────────────── */
+    .mic-wrap.is-recording .mic-halo { display: none; }
+    .mic-wrap.is-recording .mic-btn {
+      background: linear-gradient(180deg, var(--coral), var(--coral-2));
+      box-shadow:
+        0 1px 0 oklch(1 0 0 / 0.18) inset,
+        0 0 0 10px var(--coral-tint),
+        0 0 0 11px oklch(0.62 0.18 25 / 0.25),
+        0 30px 60px -20px oklch(0.55 0.18 25 / 0.55);
+    }
+    .mic-wrap.is-recording .mic-ring {
+      animation: pulseRing 2.4s ease-out infinite;
+      border-color: oklch(0.62 0.18 25 / 0.5);
+    }
+    .mic-wrap.is-recording .mic-ring.r2 { animation-delay: .4s; }
+    .mic-wrap.is-recording .mic-ring.r3 { animation-delay: .8s; }
+    @keyframes pulseRing {
+      0%   { transform: scale(0.92); opacity: 0.9; }
+      80%  { transform: scale(1.18); opacity: 0; }
+      100% { transform: scale(1.2);  opacity: 0; }
+    }
+
+    /* Audio-reactive bars (overlay inside mic-btn) */
+    .mic-bars {
+      position: absolute; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      gap: 5px;
+    }
+    .mic-wrap.is-recording .mic-glyph { display: none; }
+    .mic-wrap.is-recording .mic-bars  { display: flex; }
+    .mic-bars .bar {
+      display: inline-block;
+      width: 5px;
+      height: 10px;
+      background: var(--paper);
+      border-radius: 4px;
+      transform-origin: center;
+      transition: height .08s ease-out;
+    }
+    /* idle gentle bar pulse before voice detected */
+    .mic-wrap.is-recording .mic-bars .bar { animation: barIdle 1.4s ease-in-out infinite; }
+    .mic-bars .bar:nth-child(1) { animation-delay: 0s; }
+    .mic-bars .bar:nth-child(2) { animation-delay: .12s; }
+    .mic-bars .bar:nth-child(3) { animation-delay: .24s; }
+    .mic-bars .bar:nth-child(4) { animation-delay: .36s; }
+    .mic-bars .bar:nth-child(5) { animation-delay: .48s; }
+    .mic-bars .bar:nth-child(6) { animation-delay: .6s; }
+    .mic-bars .bar:nth-child(7) { animation-delay: .72s; }
+    @keyframes barIdle {
+      0%, 100% { height: 10px; }
+      50%      { height: 30px; }
+    }
+
+    /* PROCESSING ──────────────────────────────────────────────── */
+    .mic-wrap.is-processing .mic-halo { display: none; }
+    .mic-wrap.is-processing .mic-btn {
+      background: linear-gradient(180deg, var(--emerald), var(--emerald-deep));
+      box-shadow:
+        0 1px 0 oklch(1 0 0 / 0.18) inset,
+        0 0 0 10px var(--emerald-tint),
+        0 30px 60px -20px oklch(0.55 0.12 165 / 0.5);
+    }
+    .mic-wrap.is-processing .mic-btn::after {
+      content: ""; position: absolute; inset: -14px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      border-top-color: var(--emerald);
+      border-inline-end-color: var(--emerald);
+      animation: spin 0.9s linear infinite;
+    }
+    .mic-wrap.is-processing .mic-glyph { opacity: 0.4; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Mic caption */
+    .mic-caption {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      min-height: 62px;
+    }
+    .mic-caption-label {
+      font-family: var(--f-display);
+      font-weight: 700;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .mic-caption-hint {
+      font-size: 14px; color: var(--ink-2);
+    }
+    .mic-timer {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--f-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--coral);
+      padding: 4px 12px;
+      background: var(--coral-tint);
+      border-radius: 999px;
+      border: 1px solid oklch(0.62 0.18 25 / 0.25);
+    }
+    .mic-timer::before {
+      content: ""; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--coral);
+      animation: blink 1s ease-in-out infinite;
+    }
+    @keyframes blink { 50% { opacity: 0.25; } }
+
+    /* Voice-prompt suggestions */
+    .voice-suggestions {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 8px;
+      margin-top: 4px;
+      max-width: 720px;
+      margin-inline: auto;
+    }
+    .v-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: oklch(1 0 0 / 0.55);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--ink-2);
+      transition: all .2s;
+    }
+    .v-chip:hover {
+      background: var(--ink); color: var(--paper); border-color: var(--ink);
+      transform: translateY(-1px);
+    }
+    .v-chip svg {
+      width: 12px; height: 12px; opacity: 0.6;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       Secondary: type-instead pathway (collapsed by default)
+       ════════════════════════════════════════════════════════════════ */
+    .type-toggle-row {
+      margin-top: 40px;
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px;
+    }
+    .type-toggle-row::before, .type-toggle-row::after {
+      content: ""; flex: 0 0 64px; height: 1px; background: var(--line-soft);
+    }
+    .type-toggle {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--ink-2);
+      background: var(--paper-2);
+      transition: all .2s;
+    }
+    .type-toggle:hover {
+      background: var(--ink); color: var(--paper); border-color: var(--ink);
+    }
+    .type-toggle svg { width: 14px; height: 14px; }
+    .type-toggle .chev {
+      transition: transform .25s;
+    }
+    .type-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+    .composer-shell {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows .35s ease, margin .35s;
+      margin-top: 0;
+    }
+    .composer-shell[data-open="true"] {
+      grid-template-rows: 1fr;
+      margin-top: 20px;
+    }
+    .composer-shell > .composer-inner {
+      overflow: hidden;
+    }
+
+    .composer {
+      background: oklch(1 0 0 / 0.7);
+      border: 1px solid var(--line);
+      border-radius: var(--r-xl);
+      padding: 20px 22px 14px;
+      box-shadow: 0 1px 0 oklch(1 0 0 / 0.6) inset, 0 12px 28px -16px oklch(0 0 0 / 0.18);
+      transition: border-color .25s, box-shadow .25s;
+    }
+    .composer:focus-within {
+      border-color: var(--emerald);
+      box-shadow: 0 0 0 4px oklch(0.55 0.12 165 / 0.12),
+                  0 1px 0 oklch(1 0 0 / 0.6) inset,
+                  0 12px 28px -16px oklch(0 0 0 / 0.2);
+    }
+    .composer-label {
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--f-mono); font-size: 11px;
+      letter-spacing: 0.12em; color: var(--ink-3); text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .char-count { font-variant-numeric: tabular-nums; }
+    textarea#question {
+      width: 100%; min-height: 100px; resize: vertical;
+      border: 0; background: transparent;
+      font-family: var(--f-display);
+      font-size: clamp(18px, 2vw, 22px);
+      line-height: 1.5;
+      color: var(--ink);
+      padding: 4px 2px 12px;
+      outline: 0;
+    }
+    textarea#question::placeholder { color: oklch(0.65 0.012 60); }
+    .composer-actions {
+      display: flex; align-items: center; gap: 14px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--line-soft);
+    }
+    .hint { font-size: 13px; color: var(--ink-3); flex: 1; }
+    .hint kbd {
+      font-family: var(--f-mono); font-size: 11px;
+      padding: 2px 7px;
+      border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px;
+      background: var(--paper-2); color: var(--ink-2);
+      margin-inline: 2px;
+    }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 11px 20px;
+      background: var(--ink); color: var(--paper);
+      border-radius: 999px; font-weight: 600; font-size: 14px;
+      transition: transform .15s, background .2s, box-shadow .2s;
+      box-shadow: 0 6px 18px -10px oklch(0 0 0 / 0.5);
+    }
+    .btn-primary:hover { background: oklch(0.28 0.012 60); transform: translateY(-1px); }
+    .btn-primary[disabled] { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-primary.is-loading .label,
+    .btn-primary.is-loading .arrow { display: none; }
+    .btn-primary .spinner { display: none; }
+    .btn-primary.is-loading .spinner { display: inline-block; }
+
+    /* ════════════════════════════════════════════════════════════════
+       Section headers + results
+       ════════════════════════════════════════════════════════════════ */
+    .sec-head {
+      display: flex; align-items: baseline; gap: 14px;
+      margin: 0 0 16px;
+    }
+    .sec-num {
+      font-family: var(--f-mono); font-size: 12px;
+      color: var(--ink-3); letter-spacing: 0.1em;
+    }
+    .sec-title {
+      font-family: var(--f-display); font-weight: 700;
+      font-size: 22px; letter-spacing: -0.01em; margin: 0;
+    }
+    .sec-divider { flex: 1; height: 1px; background: var(--line-soft); margin-block: auto; }
+
+    #results { margin-top: 64px; }
+    .result-block {
+      margin-bottom: 28px;
+      opacity: 0; transform: translateY(8px);
+      animation: rise .5s ease-out forwards;
+    }
+    .result-block:nth-child(2) { animation-delay: .08s; }
+    .result-block:nth-child(3) { animation-delay: .16s; }
+    .result-block:nth-child(4) { animation-delay: .24s; }
+    @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+
+    .card {
+      background: oklch(1 0 0 / 0.6);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 18px 22px;
+      box-shadow: 0 1px 0 oklch(1 0 0 / 0.6) inset, 0 1px 2px oklch(0 0 0 / 0.04);
+    }
+    .card.understood {
+      background: linear-gradient(180deg, oklch(0.97 0.04 165 / 0.5), oklch(1 0 0 / 0.4));
+      border-color: oklch(0.55 0.12 165 / 0.25);
+    }
+    .card.understood::before {
+      content: "“"; display: block;
+      font-family: var(--f-display); font-size: 38px; line-height: 0.8;
+      color: var(--emerald-2); margin-bottom: 4px; opacity: 0.6;
+    }
+    .card.result { background: var(--paper-2); }
+
+    /* SQL */
+    .sql-card {
+      background: var(--code-bg); color: var(--code-fg);
+      border: 1px solid var(--code-bg-2); border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: 0 20px 50px -24px oklch(0 0 0 / 0.45);
+    }
+    .sql-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid oklch(1 0 0 / 0.07);
+      background: oklch(0 0 0 / 0.18);
+    }
+    .sql-dots { display: inline-flex; gap: 6px; }
+    .sql-dots span { width: 10px; height: 10px; border-radius: 50%; background: oklch(1 0 0 / 0.18); }
+    .sql-label {
+      font-family: var(--f-mono); font-size: 11px;
+      letter-spacing: 0.14em; color: var(--code-mute); text-transform: uppercase;
+    }
+    .sql-copy {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--f-mono); font-size: 11px;
+      color: var(--code-mute); padding: 5px 10px;
+      border-radius: 6px; transition: background .2s, color .2s;
+    }
+    .sql-copy:hover { background: oklch(1 0 0 / 0.08); color: var(--code-fg); }
+    pre.sql-code {
+      margin: 0; padding: 18px 20px 22px;
+      direction: ltr; text-align: left;
+      font-family: var(--f-mono);
+      font-size: 14px; line-height: 1.65;
+      white-space: pre-wrap; word-break: break-word;
+      color: var(--code-fg);
+    }
+    pre.sql-code .k { color: var(--code-key); font-weight: 600; }
+    pre.sql-code .s { color: var(--code-str); }
+    pre.sql-code .n { color: var(--code-num); }
+    pre.sql-code .c { color: var(--code-mute); font-style: italic; }
+
+    .result-text {
+      font-family: var(--f-display);
+      font-size: clamp(18px, 1.8vw, 21px);
+      line-height: 1.6; margin: 0;
+    }
+    .understood-text {
+      font-size: clamp(17px, 1.7vw, 20px);
+      margin: 0; line-height: 1.55;
+    }
+
+    .audio-row {
+      display: flex; align-items: center; gap: 12px;
+      margin-top: 14px; padding-top: 14px;
+      border-top: 1px dashed var(--line-soft);
+    }
+    .btn-audio {
+      display: inline-flex; align-items: center; gap: 9px;
+      padding: 9px 16px;
+      background: var(--paper-2); border: 1px solid var(--line);
+      border-radius: 999px; font-size: 14px; font-weight: 500;
+      transition: all .2s;
+    }
+    .btn-audio:hover:not([disabled]) {
+      background: var(--ink); color: var(--paper); border-color: var(--ink);
+    }
+    .btn-audio[disabled] { opacity: 0.5; cursor: not-allowed; }
+    .btn-audio.is-playing {
+      background: var(--emerald); color: white; border-color: var(--emerald);
+    }
+    .btn-audio .equalizer { display: none; align-items: end; gap: 2px; height: 14px; }
+    .btn-audio.is-playing .equalizer { display: inline-flex; }
+    .btn-audio.is-playing .icon-play { display: none; }
+    .btn-audio.is-loading .icon-play { display: none; }
+    .btn-audio.is-loading .icon-spinner { display: inline-block; }
+    .btn-audio .icon-spinner { display: none; animation: spin .9s linear infinite; }
+    .equalizer span {
+      display: inline-block; width: 2.5px;
+      background: currentColor; border-radius: 1px;
+      animation: eq 1s ease-in-out infinite;
+    }
+    .equalizer span:nth-child(1){height:6px;animation-delay:0s}
+    .equalizer span:nth-child(2){height:12px;animation-delay:.15s}
+    .equalizer span:nth-child(3){height:8px;animation-delay:.3s}
+    .equalizer span:nth-child(4){height:14px;animation-delay:.45s}
+    @keyframes eq { 0%,100% { transform: scaleY(0.5); } 50% { transform: scaleY(1); } }
+    .audio-meta {
+      font-family: var(--f-mono); font-size: 11px;
+      letter-spacing: 0.1em; color: var(--ink-3); text-transform: uppercase;
+    }
+
+    .overflow-note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid oklch(0.55 0.12 165 / 0.25);
+      background: oklch(0.97 0.04 165 / 0.42);
+      color: var(--ink-2);
+      font-size: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-export {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--emerald-2);
+      background: var(--paper);
+      color: var(--emerald-deep);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all .2s;
+    }
+
+    .btn-export:hover:not([disabled]) {
+      background: var(--emerald-2);
+      color: #fff;
+      border-color: var(--emerald-2);
+    }
+
+    .btn-export[disabled] {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-export.is-loading svg {
+      animation: spin .9s linear infinite;
+    }
+
+    /* Empty + error states */
+    .placeholder {
+      padding: 40px 28px;
+      border: 1px dashed var(--line);
+      border-radius: var(--r-lg);
+      text-align: center; color: var(--ink-3);
+      background: repeating-linear-gradient(135deg,
+        transparent 0 18px, oklch(0 0 0 / 0.015) 18px 19px);
+    }
+    .placeholder-icon {
+      width: 44px; height: 44px; margin: 0 auto 14px;
+      border-radius: 50%; display: grid; place-items: center;
+      background: var(--paper-2); border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
+    .placeholder-title {
+      font-family: var(--f-display); font-weight: 700;
+      font-size: 18px; color: var(--ink-2); margin: 0 0 4px;
+    }
+    .placeholder-hint { font-size: 14px; margin: 0; }
+
+    .error-banner {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 14px 18px;
+      background: var(--coral-tint);
+      border: 1px solid oklch(0.62 0.18 25 / 0.3);
+      border-radius: var(--r-md);
+      margin: 24px 0;
+      animation: rise .35s ease-out;
+    }
+    .error-banner .err-icon {
+      flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+      background: var(--coral); color: white;
+      display: grid; place-items: center; font-weight: 700;
+      font-family: var(--f-mono); font-size: 13px; margin-top: 2px;
+    }
+    .error-banner .err-content { flex: 1; }
+    .error-banner .err-title { font-weight: 600; color: oklch(0.35 0.15 25); margin: 0 0 2px; }
+    .error-banner .err-msg { color: oklch(0.4 0.1 25); font-size: 14px; margin: 0; }
+    .error-banner button.err-dismiss {
+      color: oklch(0.45 0.12 25); font-size: 12px;
+      padding: 4px 8px; border-radius: 6px;
+    }
+    .error-banner button.err-dismiss:hover { background: oklch(0.62 0.18 25 / 0.12); }
+
+    /* Skeleton */
+    .skeleton {
+      background: linear-gradient(90deg,
+        var(--paper-2) 0%, oklch(0.98 0.01 80) 50%, var(--paper-2) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+      border-radius: 6px;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .skeleton-line { height: 14px; margin-block: 8px; }
+    .skeleton-line.w-90 { width: 90%; }
+    .skeleton-line.w-70 { width: 70%; }
+    .skeleton-line.w-50 { width: 50%; }
+
+    /* Footer */
+    footer.foot {
+      margin-top: 80px; padding-top: 24px;
+      border-top: 1px solid var(--line-soft);
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+      font-family: var(--f-mono); font-size: 11px;
+      letter-spacing: 0.1em; color: var(--ink-3); text-transform: uppercase;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .shell { padding: 16px 14px 80px; }
+      .topbar { padding-bottom: 14px; }
+      .brand-sub { display: none; }
+      .stage { padding: 24px 16px 38px; border-radius: 22px; }
+      .stage-eyebrow { margin-bottom: 12px; font-size: 11px; letter-spacing: 0.16em; }
+      .stage-sub { margin-bottom: 26px; }
+      .mic-wrap { width: 200px; height: 200px; }
+      .mic-btn { width: 152px; height: 152px; }
+      .mic-btn svg.mic-glyph { width: 52px; height: 52px; }
+      .voice-suggestions { gap: 6px; }
+      .v-chip { font-size: 12px; padding: 7px 12px; }
+      .composer { padding: 16px 14px 10px; border-radius: 20px; }
+      .composer-actions { flex-wrap: wrap; }
+      .hint { font-size: 12px; order: 2; flex-basis: 100%; }
+      .btn-primary { width: 100%; justify-content: center; order: 1; }
+      .audio-row { flex-wrap: wrap; }
+    }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="container main-container">
-        <div class="text-center mb-4">
-            <h1>المساعد الصوتي العربي للاستعلام عن قاعدة البيانات</h1>
-            <p class="lead">اسأل عن بيانات الموظفين بلغتك العربية</p>
+  <main class="shell">
+
+    <!-- ════════════════════════ Top bar ════════════════════════ -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <div class="brand-name">فَهِيم</div>
+          <div class="brand-sub">FAHEEM · VOICE → SQL</div>
+        </div>
+      </div>
+      <div class="status-chip" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="conn-status">جاهز للاستقبال</span>
+      </div>
+    </header>
+
+    <!-- ════════════════════════ STAGE — voice-flagship ════════════════════════ -->
+    <section class="stage" aria-labelledby="stage-title">
+      <div class="stage-eyebrow">Arabic Voice · SQL</div>
+      <h1 class="stage-title" id="stage-title">
+        تحدّث بالعربيّة،<br />
+        <em>نُجيبك من قاعدة بياناتك</em>.
+      </h1>
+      <p class="stage-sub">
+        اضغط على الميكروفون وقل سؤالك. فَهِيم يفهم العربيّة، يُكوِّن استعلام SQL،
+        ويُعيد لك الإجابة نصّاً وصوتاً.
+      </p>
+
+      <div class="mic-stage">
+        <div class="mic-wrap" id="mic-wrap">
+          <span class="mic-halo" aria-hidden="true"></span>
+          <span class="mic-ring r1" aria-hidden="true"></span>
+          <span class="mic-ring r2" aria-hidden="true"></span>
+          <span class="mic-ring r3" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="mic-btn"
+            id="mic-btn"
+            aria-label="ابدأ التسجيل الصوتي"
+            aria-pressed="false">
+            <svg class="mic-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="2" width="6" height="13" rx="3"></rect>
+              <path d="M5 11a7 7 0 0 0 14 0"></path>
+              <line x1="12" y1="18" x2="12" y2="22"></line>
+              <line x1="8" y1="22" x2="16" y2="22"></line>
+            </svg>
+            <span class="mic-bars" id="mic-bars" aria-hidden="true">
+              <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+              <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+              <span class="bar"></span>
+            </span>
+          </button>
         </div>
 
-        <div class="row mb-4">
-            <div class="col-md-8 mx-auto">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">أدخل سؤالك</h5>
-                        <div class="mb-3">
-                            <textarea id="textInput" class="form-control" rows="3" placeholder="مثال: أعطني قائمة بجميع الموظفين في قسم تكنولوجيا المعلومات"></textarea>
-                        </div>
-                        <div class="d-flex justify-content-between">
-                            <button id="submitText" class="btn btn-primary">إرسال النص</button>
-                            <button id="recordBtn" class="record-btn">
-                                <i class="bi bi-mic-fill"></i>
-                            </button>
-                        </div>
-                        <div id="recordingStatus" class="text-center mt-2" style="display: none;">
-                            جاري التسجيل...
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="mic-caption" aria-live="polite">
+          <span class="mic-caption-label" id="mic-label">اضغط للتحدّث</span>
+          <span class="mic-caption-hint" id="mic-hint">قُل سؤالك بوضوح بالعربية</span>
+          <span class="mic-timer" id="mic-timer" hidden>00:00</span>
         </div>
 
-        <div id="resultContainer" class="result-container" style="display: none;">
-            <div class="mb-3">
-                <h5>ما فهمته:</h5>
-                <p id="transcribedText" class="p-2 bg-light rounded"></p>
-            </div>
-            <div class="mb-3">
-                <h5>استعلام SQL:</h5>
-                <pre id="sqlQuery" class="p-2 bg-light rounded" dir="ltr" style="text-align: left;"></pre>
-            </div>
-            <div>
-                <h5>النتيجة:</h5>
-                <div id="queryResult" class="p-2 bg-light rounded"></div>
-                <button id="playResponseBtn" class="btn btn-success mt-2">
-                    <i class="bi bi-volume-up"></i> تشغيل الصوت
-                </button>
-                <audio id="responseAudio" style="display: none;"></audio>
-            </div>
+        <div class="voice-suggestions" aria-label="أمثلة على الأسئلة">
+          <button type="button" class="v-chip" data-suggest="كم عدد الموظفين الذين انضموا خلال الشهر الماضي؟">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            كم عدد الموظفين الجدد هذا الشهر؟
+          </button>
+          <button type="button" class="v-chip" data-suggest="ما هو متوسط الراتب في قسم الهندسة؟">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            متوسط الراتب في الهندسة
+          </button>
+          <button type="button" class="v-chip" data-suggest="أعلى عشرة عملاء من حيث المبيعات هذا العام">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            أعلى ١٠ عملاء بالمبيعات
+          </button>
         </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════ Secondary: type instead ════════════════════════ -->
+    <div class="type-toggle-row">
+      <button type="button" class="type-toggle" id="type-toggle" aria-expanded="false" aria-controls="composer-shell">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        <span>أو اكتب سؤالك بدلاً من ذلك</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
     </div>
 
-    <!-- Bootstrap Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const recordBtn = document.getElementById('recordBtn');
-            const submitTextBtn = document.getElementById('submitText');
-            const textInput = document.getElementById('textInput');
-            const recordingStatus = document.getElementById('recordingStatus');
-            const resultContainer = document.getElementById('resultContainer');
-            const transcribedText = document.getElementById('transcribedText');
-            const sqlQuery = document.getElementById('sqlQuery');
-            const queryResult = document.getElementById('queryResult');
-            const playResponseBtn = document.getElementById('playResponseBtn');
-            const responseAudio = document.getElementById('responseAudio');
-            
-            let mediaRecorder;
-            let audioChunks = [];
-            let isRecording = false;
-            
-            // Handle text submission
-            submitTextBtn.addEventListener('click', function() {
-                const text = textInput.value.trim();
-                if (text) {
-                    processText(text);
-                }
-            });
-            
-            // Handle recording
-            recordBtn.addEventListener('click', function() {
-                if (!isRecording) {
-                    startRecording();
-                } else {
-                    stopRecording();
-                }
-            });
-            
-            function startRecording() {
-                navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(stream => {
-                        isRecording = true;
-                        recordBtn.classList.add('recording');
-                        recordingStatus.style.display = 'block';
-                        
-                        mediaRecorder = new MediaRecorder(stream);
-                        audioChunks = [];
-                        
-                        mediaRecorder.addEventListener('dataavailable', event => {
-                            audioChunks.push(event.data);
-                        });
-                        
-                        mediaRecorder.addEventListener('stop', () => {
-                            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                            const reader = new FileReader();
-                            reader.readAsDataURL(audioBlob);
-                            reader.onloadend = () => {
-                                const base64data = reader.result;
-                                processAudio(base64data);
-                            };
-                            
-                            // Stop all tracks
-                            stream.getTracks().forEach(track => track.stop());
-                        });
-                        
-                        mediaRecorder.start();
-                        
-                        // Auto stop after 10 seconds
-                        setTimeout(() => {
-                            if (isRecording) {
-                                stopRecording();
-                            }
-                        }, 10000);
-                    })
-                    .catch(error => {
-                        console.error('Error accessing microphone:', error);
-                        alert('لا يمكن الوصول إلى الميكروفون. يرجى التحقق من إعدادات المتصفح.');
-                    });
-            }
-            
-            function stopRecording() {
-                if (mediaRecorder && isRecording) {
-                    isRecording = false;
-                    recordBtn.classList.remove('recording');
-                    recordingStatus.style.display = 'none';
-                    mediaRecorder.stop();
-                }
-            }
-            
-            function processText(text) {
-                fetch('/process_text', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `text=${encodeURIComponent(text)}`
-                })
-                .then(response => response.json())
-                .then(data => {
-                    displayResults(data);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('حدث خطأ أثناء معالجة النص');
-                });
-            }
-            
-            function processAudio(audioData) {
-                fetch('/process_audio', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `audio=${encodeURIComponent(audioData)}`
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        alert('حدث خطأ: ' + data.error);
-                    } else {
-                        displayResults(data);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('حدث خطأ أثناء معالجة الصوت');
-                });
-            }
-            
-            function displayResults(data) {
-                transcribedText.textContent = data.input;
-                sqlQuery.textContent = data.sql;
-                queryResult.textContent = data.response;
-                resultContainer.style.display = 'block';
-                
-                // Reset audio button
-                playResponseBtn.disabled = false;
-                playResponseBtn.innerHTML = '<i class="bi bi-volume-up"></i> تشغيل الصوت';
-            }
-            
-            // Play response button
-            playResponseBtn.addEventListener('click', function() {
-                const responseText = queryResult.textContent;
-                
-                if (responseText) {
-                    playResponseBtn.disabled = true;
-                    playResponseBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> جاري التحميل...';
-                    
-                    fetch('/text_to_speech', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: `text=${encodeURIComponent(responseText)}`
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            alert('حدث خطأ: ' + data.error);
-                        } else {
-                            // Create audio from base64
-                            responseAudio.src = 'data:audio/wav;base64,' + data.audio;
-                            responseAudio.play();
-                        }
-                        playResponseBtn.disabled = false;
-                        playResponseBtn.innerHTML = '<i class="bi bi-volume-up"></i> تشغيل الصوت';
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('حدث خطأ أثناء تحويل النص إلى كلام');
-                        playResponseBtn.disabled = false;
-                        playResponseBtn.innerHTML = '<i class="bi bi-volume-up"></i> تشغيل الصوت';
-                    });
-                }
-            });
+    <div class="composer-shell" id="composer-shell" data-open="false">
+      <div class="composer-inner">
+        <div id="error-slot" aria-live="assertive"></div>
+        <form id="text-form" class="composer" novalidate>
+          <div class="composer-label">
+            <span>السؤال بالعربية</span>
+            <span class="char-count"><span id="char-n">0</span>‏ / 500</span>
+          </div>
+          <label for="question" class="sr-only">اكتب سؤالك بالعربية</label>
+          <textarea
+            id="question" name="text" maxlength="500"
+            placeholder="مثال: كم عدد الموظفين الذين انضموا خلال الشهر الماضي؟"
+            autocomplete="off" spellcheck="false" aria-describedby="hint"></textarea>
+          <div class="composer-actions">
+            <div class="hint" id="hint">
+              اضغط <kbd>Ctrl</kbd> + <kbd>Enter</kbd> للإرسال
+            </div>
+            <button type="submit" class="btn-primary" id="submit-btn">
+              <span class="label">إرسال السؤال</span>
+              <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <svg class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" style="animation: spin .9s linear infinite;">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ════════════════════════ Results ════════════════════════ -->
+    <section id="results" aria-live="polite" aria-atomic="false">
+      <div class="placeholder" id="empty-state">
+        <div class="placeholder-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11l18-8-8 18-2-8-8-2z"></path>
+          </svg>
+        </div>
+        <p class="placeholder-title">في انتظار صوتك</p>
+        <p class="placeholder-hint">ستظهر هنا نتيجة التحليل والاستعلام والإجابة.</p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div>فَهِيم · Arabic Voice → SQL</div>
+      <div>© ٢٠٢٦ — كل الحقوق محفوظة</div>
+    </footer>
+  </main>
+
+  <audio id="tts-audio" preload="none"></audio>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       Scripts
+       ════════════════════════════════════════════════════════════════ -->
+  <script>
+  (() => {
+    'use strict';
+
+    // ────────────── DOM refs ──────────────
+    const $ = (id) => document.getElementById(id);
+    const form        = $('text-form');
+    const textarea    = $('question');
+    const charN       = $('char-n');
+    const submitBtn   = $('submit-btn');
+    const micBtn      = $('mic-btn');
+    const micWrap     = $('mic-wrap');
+    const micLabel    = $('mic-label');
+    const micHint     = $('mic-hint');
+    const micTimer    = $('mic-timer');
+    const micBars     = $('mic-bars');
+    const results     = $('results');
+    const emptyState  = $('empty-state');
+    const errorSlot   = $('error-slot');
+    const ttsAudio    = $('tts-audio');
+    const typeToggle  = $('type-toggle');
+    const composerShell = $('composer-shell');
+
+    // ────────────── State ──────────────
+    let micState = 'idle';
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordStart = 0;
+    let recordTimerId = null;
+    let isSubmitting = false;
+
+    // Audio-reactive bars
+    let audioCtx = null;
+    let analyser = null;
+    let rafId = null;
+    let barEls = micBars ? Array.from(micBars.querySelectorAll('.bar')) : [];
+
+    // ────────────── Helpers ──────────────
+    const setBusy = (busy) => {
+      isSubmitting = busy;
+      submitBtn.disabled = busy;
+      submitBtn.classList.toggle('is-loading', busy);
+    };
+    const escapeHtml = (s) => String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const showError = (title, msg) => {
+      errorSlot.innerHTML = `
+        <div class="error-banner" role="alert">
+          <div class="err-icon" aria-hidden="true">!</div>
+          <div class="err-content">
+            <p class="err-title">${escapeHtml(title)}</p>
+            <p class="err-msg">${escapeHtml(msg)}</p>
+          </div>
+          <button class="err-dismiss" type="button" aria-label="إغلاق">إغلاق</button>
+        </div>`;
+      errorSlot.querySelector('.err-dismiss').addEventListener('click', () => {
+        errorSlot.innerHTML = '';
+      });
+      // ensure type composer is visible when there's a text-side error
+      openComposer(true);
+    };
+    const clearError = () => { errorSlot.innerHTML = ''; };
+    const highlightSQL = (raw) => {
+      const KW = /\b(SELECT|FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|ON|AS|AND|OR|NOT|IN|IS|NULL|LIKE|BETWEEN|CASE|WHEN|THEN|ELSE|END|INSERT|UPDATE|DELETE|INTO|VALUES|SET|CREATE|TABLE|ALTER|DROP|DISTINCT|UNION|ALL|COUNT|SUM|AVG|MIN|MAX|DATE|YEAR|MONTH|DAY|NOW|CURRENT_DATE|CURRENT_TIMESTAMP|DESC|ASC|TRUE|FALSE)\b/gi;
+      let out = escapeHtml(raw);
+      out = out.replace(/('([^']|'')*')/g, '<span class="s">$1</span>');
+      out = out.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="n">$1</span>');
+      out = out.replace(/(--[^\n]*)/g, '<span class="c">$1</span>');
+      out = out.replace(KW, '<span class="k">$1</span>');
+      return out;
+    };
+    const fmtTime = (ms) => {
+      const s = Math.floor(ms / 1000);
+      return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    };
+
+    // ────────────── Composer toggle ──────────────
+    const openComposer = (open) => {
+      composerShell.dataset.open = open ? 'true' : 'false';
+      typeToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) setTimeout(() => textarea.focus(), 240);
+    };
+    typeToggle.addEventListener('click', () => {
+      openComposer(composerShell.dataset.open !== 'true');
+    });
+
+    // ────────────── Suggestion chips ──────────────
+    document.querySelectorAll('.v-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const text = chip.dataset.suggest || '';
+        textarea.value = text;
+        charN.textContent = text.length;
+        openComposer(true);
+      });
+    });
+
+    // ────────────── Char counter ──────────────
+    textarea.addEventListener('input', () => {
+      charN.textContent = textarea.value.length;
+    });
+
+    // ────────────── Submit (text) ──────────────
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isSubmitting) return;
+      const text = textarea.value.trim();
+      if (!text) {
+        showError('السؤال فارغ', 'يرجى كتابة سؤالك قبل الإرسال.');
+        textarea.focus();
+        return;
+      }
+      clearError();
+      setBusy(true);
+      renderLoading(text);
+      try {
+        const body = new FormData();
+        body.append('text', text);
+        const res = await fetch('/process_text', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok || data.error) renderError(data.error || `خطأ في الخادم (${res.status})`);
+        else renderResult(data);
+      } catch {
+        renderError('تعذّر الاتصال بالخادم. تحقّق من اتصالك ثم حاول مجدّداً.');
+      } finally {
+        setBusy(false);
+      }
+    });
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    // ────────────── Mic state ──────────────
+    const setMicState = (state) => {
+      micState = state;
+      micWrap.classList.toggle('is-recording', state === 'recording');
+      micWrap.classList.toggle('is-processing', state === 'processing');
+      micBtn.setAttribute('aria-pressed', state === 'recording' ? 'true' : 'false');
+
+      if (state === 'idle') {
+        micLabel.textContent = 'اضغط للتحدّث';
+        micHint.textContent  = 'قُل سؤالك بوضوح بالعربية';
+        micTimer.hidden = true;
+        micBtn.setAttribute('aria-label', 'ابدأ التسجيل الصوتي');
+      } else if (state === 'recording') {
+        micLabel.textContent = 'أتحدّث الآن…';
+        micHint.textContent  = 'اضغط على الزر مرّة أخرى للإيقاف والإرسال';
+        micTimer.hidden = false;
+        micBtn.setAttribute('aria-label', 'أوقف التسجيل');
+      } else if (state === 'processing') {
+        micLabel.textContent = 'جارٍ المعالجة…';
+        micHint.textContent  = 'نُحلّل صوتك ونحوِّله إلى استعلام';
+        micTimer.hidden = true;
+        micBtn.setAttribute('aria-label', 'جارٍ المعالجة');
+      }
+    };
+
+    // ────────────── Audio-reactive bars ──────────────
+    const startVisualizer = (stream) => {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.7;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          analyser.getByteFrequencyData(data);
+          // map 7 frequency bands to 7 bars
+          const n = barEls.length;
+          for (let i = 0; i < n; i++) {
+            // pick bins from low → high → low (mirror for symmetry)
+            const idx = Math.floor((i / (n - 1)) * (data.length - 1));
+            const mirror = i < n / 2 ? idx : Math.floor(((n - 1 - i) / (n - 1)) * (data.length - 1));
+            const v = data[mirror] / 255;
+            const h = 8 + Math.pow(v, 0.7) * 64; // 8 → ~72 px
+            barEls[i].style.height = h + 'px';
+            barEls[i].style.animation = 'none';
+          }
+          rafId = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch {
+        /* visualizer is optional; ignore failures */
+      }
+    };
+    const stopVisualizer = () => {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+      barEls.forEach((b) => { b.style.height = ''; b.style.animation = ''; });
+    };
+
+    // ────────────── Recording ──────────────
+    const startRecording = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        showError('غير مدعوم', 'متصفّحك لا يدعم تسجيل الصوت.');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+        mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        mediaRecorder.addEventListener('dataavailable', (ev) => {
+          if (ev.data && ev.data.size > 0) audioChunks.push(ev.data);
         });
-    </script>
+        mediaRecorder.addEventListener('stop', async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          stopVisualizer();
+          await handleRecordingComplete();
+        });
+        recordStart = Date.now();
+        recordTimerId = setInterval(() => {
+          micTimer.textContent = fmtTime(Date.now() - recordStart);
+        }, 250);
+        micTimer.textContent = '00:00';
+        mediaRecorder.start();
+        setMicState('recording');
+        startVisualizer(stream);
+        clearError();
+      } catch {
+        showError('تعذّر الوصول إلى الميكروفون', 'يرجى منح الإذن من إعدادات المتصفّح.');
+      }
+    };
+    const stopRecording = () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      if (recordTimerId) { clearInterval(recordTimerId); recordTimerId = null; }
+    };
+    const handleRecordingComplete = async () => {
+      if (audioChunks.length === 0) { setMicState('idle'); return; }
+      setMicState('processing');
+      renderLoading('🎙 سؤالك الصوتي');
+      try {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const base64 = await blobToBase64(blob);
+        const body = new FormData();
+        body.append('audio', base64);
+        const res = await fetch('/process_audio', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok || data.error) renderError(data.error || `خطأ في الخادم (${res.status})`);
+        else renderResult(data);
+      } catch {
+        renderError('تعذّر معالجة التسجيل الصوتي.');
+      } finally {
+        setMicState('idle');
+      }
+    };
+    const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const s = String(fr.result);
+        const i = s.indexOf(',');
+        resolve(i >= 0 ? s.slice(i + 1) : s);
+      };
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+    micBtn.addEventListener('click', () => {
+      if (micState === 'idle') startRecording();
+      else if (micState === 'recording') stopRecording();
+    });
+    // spacebar shortcut on the mic (focus the button + press space)
+    micBtn.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (micState === 'idle') startRecording();
+        else if (micState === 'recording') stopRecording();
+      }
+    });
+
+    // ────────────── Results ──────────────
+    const renderLoading = (echoInput) => {
+      emptyState.hidden = true;
+      results.innerHTML = `
+        <div class="result-block">
+          <div class="sec-head">
+            <span class="sec-num">٠١</span>
+            <h3 class="sec-title">ما فهمه النظام</h3>
+            <span class="sec-divider"></span>
+          </div>
+          <div class="card understood">
+            <p class="understood-text">${escapeHtml(echoInput)}</p>
+          </div>
+        </div>
+        <div class="result-block">
+          <div class="sec-head">
+            <span class="sec-num">٠٢</span>
+            <h3 class="sec-title">استعلام SQL</h3>
+            <span class="sec-divider"></span>
+          </div>
+          <div class="sql-card">
+            <div class="sql-head">
+              <span class="sql-dots"><span></span><span></span><span></span></span>
+              <span class="sql-label">QUERY · GENERATING…</span>
+              <span style="width:46px"></span>
+            </div>
+            <pre class="sql-code"><span class="c">-- جارٍ توليد الاستعلام…</span>
+<div class="skeleton skeleton-line w-90"></div>
+<div class="skeleton skeleton-line w-70"></div>
+<div class="skeleton skeleton-line w-50"></div></pre>
+          </div>
+        </div>
+        <div class="result-block">
+          <div class="sec-head">
+            <span class="sec-num">٠٣</span>
+            <h3 class="sec-title">النتيجة</h3>
+            <span class="sec-divider"></span>
+          </div>
+          <div class="card result">
+            <div class="skeleton skeleton-line w-90"></div>
+            <div class="skeleton skeleton-line w-70"></div>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderError = (msg) => {
+      emptyState.hidden = false;
+      results.innerHTML = '';
+      results.appendChild(emptyState);
+      showError('حدث خطأ', msg);
+    };
+
+    const renderResult = (data) => {
+      emptyState.hidden = true;
+      const inputText  = data.input    ?? '';
+      const sqlText    = data.sql      ?? '';
+      const responseTx = data.response ?? '';
+      const metadata   = data.metadata ?? {};
+      const rowLimit   = Number(metadata.row_limit || 0);
+      const overflow   = Boolean(metadata.overflow);
+      const csvExportAvailable = Boolean(metadata.csv_export_available);
+
+      const overflowHtml = overflow ? `
+            <div class="overflow-note" role="status">
+              <span>تم عرض أول ${rowLimit || 'عدد محدود من'} الصفوف فقط.</span>
+              ${csvExportAvailable ? `
+              <button type="button" class="btn-export" id="download-csv-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="label">تنزيل CSV</span>
+              </button>` : ''}
+            </div>` : '';
+
+      results.innerHTML = `
+        <div class="result-block">
+          <div class="sec-head">
+            <span class="sec-num">٠١</span>
+            <h3 class="sec-title">ما فهمه النظام</h3>
+            <span class="sec-divider"></span>
+          </div>
+          <div class="card understood">
+            <p class="understood-text">${escapeHtml(inputText) || '<em>—</em>'}</p>
+          </div>
+        </div>
+        <div class="result-block">
+          <div class="sec-head">
+            <span class="sec-num">٠٢</span>
+            <h3 class="sec-title">استعلام SQL</h3>
+            <span class="sec-divider"></span>
+          </div>
+          <div class="sql-card">
+            <div class="sql-head">
+              <span class="sql-dots"><span></span><span></span><span></span></span>
+              <span class="sql-label">QUERY · SQL</span>
+              <button type="button" class="sql-copy" id="copy-btn" aria-label="نسخ الاستعلام">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span id="copy-label">نسخ</span>
+              </button>
+            </div>
+            <pre class="sql-code" id="sql-pre">${highlightSQL(sqlText)}</pre>
+          </div>
+        </div>
+        <div class="result-block">
+          <div class="sec-head">
+            <span class="sec-num">٠٣</span>
+            <h3 class="sec-title">النتيجة</h3>
+            <span class="sec-divider"></span>
+          </div>
+          <div class="card result">
+            <p class="result-text" id="response-text">${escapeHtml(responseTx) || '<em>لا توجد إجابة.</em>'}</p>
+            ${overflowHtml}
+            <div class="audio-row">
+              <button type="button" class="btn-audio" id="play-btn" ${responseTx ? '' : 'disabled'}>
+                <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                <svg class="icon-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <span class="equalizer" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+                <span class="label">استمع للإجابة</span>
+              </button>
+              <span class="audio-meta">TEXT-TO-SPEECH · AR</span>
+            </div>
+          </div>
+        </div>
+      `;
+      const copyBtn = $('copy-btn');
+      const copyLabel = $('copy-label');
+      copyBtn?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(sqlText);
+          copyLabel.textContent = 'تم النسخ ✓';
+          setTimeout(() => (copyLabel.textContent = 'نسخ'), 1500);
+        } catch {
+          copyLabel.textContent = 'تعذّر النسخ';
+        }
+      });
+      const playBtn = $('play-btn');
+      playBtn?.addEventListener('click', () => playTTS(responseTx, playBtn));
+
+      const downloadCsvBtn = $('download-csv-btn');
+      downloadCsvBtn?.addEventListener('click', () => downloadCsv(sqlText, downloadCsvBtn));
+    };
+
+    const downloadCsv = async (sqlText, btn) => {
+      if (!sqlText || btn.disabled) return;
+
+      const label = btn.querySelector('.label');
+      const originalLabel = label ? label.textContent : 'تنزيل CSV';
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      if (label) label.textContent = 'جارٍ التحضير…';
+
+      try {
+        const body = new FormData();
+        body.append('sql', sqlText);
+
+        const res = await fetch('/export_csv', { method: 'POST', body });
+        if (!res.ok) {
+          let err = 'فشل تنزيل الملف.';
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await res.json();
+            err = data.error || err;
+          }
+          throw new Error(err);
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'query_results.csv';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+
+        if (label) label.textContent = 'تم التنزيل ✓';
+        setTimeout(() => {
+          if (label) label.textContent = originalLabel;
+        }, 1500);
+      } catch (error) {
+        showError('فشل التصدير', error instanceof Error ? error.message : 'تعذر تنزيل ملف CSV.');
+        if (label) label.textContent = originalLabel;
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('is-loading');
+      }
+    };
+
+    // ────────────── TTS ──────────────
+    const playTTS = async (text, btn) => {
+      if (!text || btn.disabled) return;
+      const label = btn.querySelector('.label');
+      if (btn.classList.contains('is-playing')) {
+        ttsAudio.pause(); ttsAudio.currentTime = 0;
+        btn.classList.remove('is-playing');
+        label.textContent = 'استمع للإجابة';
+        return;
+      }
+      btn.classList.add('is-loading'); btn.disabled = true;
+      label.textContent = 'جارٍ التحميل…';
+      try {
+        const body = new FormData();
+        body.append('text', text);
+        const res = await fetch('/text_to_speech', { method: 'POST', body });
+        if (!res.ok) throw new Error('tts-failed');
+        const ctype = res.headers.get('content-type') || '';
+        let url;
+        if (ctype.includes('application/json')) {
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          const b64 = data.audio || data.audio_base64 || data.audio_content;
+          if (!b64) throw new Error('no-audio');
+          url = `data:audio/wav;base64,${b64}`;
+        } else {
+          const blob = await res.blob();
+          url = URL.createObjectURL(blob);
+        }
+        ttsAudio.src = url;
+        btn.classList.remove('is-loading');
+        btn.classList.add('is-playing');
+        btn.disabled = false;
+        label.textContent = 'جارٍ التشغيل…';
+        await ttsAudio.play();
+      } catch {
+        btn.classList.remove('is-loading', 'is-playing');
+        btn.disabled = false;
+        label.textContent = 'تعذّر التشغيل';
+        setTimeout(() => (label.textContent = 'استمع للإجابة'), 1800);
+      }
+    };
+    ttsAudio.addEventListener('ended', () => {
+      const btn = $('play-btn'); if (!btn) return;
+      btn.classList.remove('is-playing');
+      btn.querySelector('.label').textContent = 'استمع للإجابة';
+    });
+
+    // ────────────── Init ──────────────
+    setMicState('idle');
+  })();
+  </script>
 </body>
 </html>
-

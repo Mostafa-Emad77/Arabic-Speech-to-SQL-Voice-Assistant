@@ -2,10 +2,10 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
-from huggingface_hub import InferenceClient
 
 from database import (
     connect_to_db,
+    execute_query_with_metadata,
     example_db_schema,
     execute_query,
     get_db_schema,
@@ -13,7 +13,7 @@ from database import (
     validate_read_only_sql,
 )
 from response_formatter import format_response
-from speech import record_audio, transcribe_audio
+from speech import initialize_asr_model, record_audio, transcribe_audio
 from sql_engine import check_ollama_connection, text_to_sql
 from tts_engine import (
     generate_speech_for_web,
@@ -28,6 +28,7 @@ __all__ = [
     "connect_to_db",
     "example_db_schema",
     "execute_query",
+    "execute_query_with_metadata",
     "format_response",
     "generate_speech_for_web",
     "generate_speech_with_local_model",
@@ -43,13 +44,7 @@ __all__ = [
 ]
 
 def initialize_models() -> tuple[Any, None, None, Any | None, Any | None]:
-    print("Loading Whisper model for speech recognition...")
-    api_key = os.getenv("FAL_AI_API_KEY")
-    client = InferenceClient(
-        provider="fal-ai",
-        api_key=api_key,
-    )
-    transcriber = client
+    transcriber = initialize_asr_model()
 
     print("Loading Arabic Text-to-SQL model...")
     check_ollama_connection()
