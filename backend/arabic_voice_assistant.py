@@ -13,6 +13,7 @@ from database import (
     validate_read_only_sql,
 )
 from response_formatter import format_response
+from security import load_security_config
 from speech import initialize_asr_model, record_audio, transcribe_audio
 from sql_engine import check_ollama_connection, text_to_sql
 from tts_engine import (
@@ -58,6 +59,7 @@ def initialize_models() -> tuple[Any, None, None, Any | None, Any | None]:
 def main() -> None:
     transcriber, sql_model, tokenizer, tts_processor, tts_model = initialize_models()
     db_connection = connect_to_db()
+    security_config = load_security_config()
 
     test_mode = False
     if not db_connection:
@@ -82,7 +84,8 @@ def main() -> None:
                 arabic_text = input()
                 print(f"Text input: {arabic_text}")
 
-            sql_query = text_to_sql(sql_model, tokenizer, arabic_text, db_schema)
+            sql_query = text_to_sql(sql_model, tokenizer, arabic_text, db_schema,
+                                    max_retries=security_config.max_sql_retries)
             print(f"Generated SQL: {sql_query}")
 
             is_safe, validation_error = validate_read_only_sql(sql_query)
