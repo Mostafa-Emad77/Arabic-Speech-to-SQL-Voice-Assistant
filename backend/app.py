@@ -1,8 +1,9 @@
 import os
 import csv
 import io
+import secrets
 
-from flask import Flask, Response, render_template, request, jsonify
+from flask import Flask, Response, render_template, request, jsonify, session
 import arabic_voice_assistant as ava
 import base64
 import tempfile
@@ -20,6 +21,15 @@ app = Flask(__name__, template_folder=os.path.join(PROJECT_ROOT, "frontend"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 SECURITY_CONFIG = load_security_config()
+
+_secret_key = os.getenv("FLASK_SECRET_KEY", "")
+if not _secret_key:
+    logger.warning(
+        "FLASK_SECRET_KEY is not set. Using a random key — sessions will be invalidated on restart. "
+        "Set FLASK_SECRET_KEY in your .env file for persistent sessions."
+    )
+    _secret_key = secrets.token_hex(32)
+app.secret_key = _secret_key
 
 # Initialize models and database connection
 transcriber, sql_model, tokenizer, tts_processor, tts_model = ava.initialize_models()
@@ -51,12 +61,17 @@ def process_text():
         return jsonify({'error': prompt_error}), 400
 
     # Convert to SQL
-    sql_query = ava.text_to_sql(sql_model, tokenizer, arabic_text, db_schema)
+    sql_query = ava.text_to_sql(sql_model, tokenizer, arabic_text, db_schema,
+                                max_retries=SECURITY_CONFIG.max_sql_retries)
 
     # Enforce read-only SQL before any execution.
     is_safe, validation_error = ava.validate_read_only_sql(sql_query)
     if not is_safe:
         return jsonify({'error': validation_error, 'sql': sql_query}), 400
+
+    # Store the validated query server-side so /export_csv can use it without
+    # trusting any SQL that comes from the client.
+    session['last_sql'] = sql_query
 
     # Execute query
     if test_mode:
@@ -113,12 +128,17 @@ def process_audio():
             return jsonify({'error': prompt_error}), 400
 
         # Convert to SQL
-        sql_query = ava.text_to_sql(sql_model, tokenizer, arabic_text, db_schema)
+        sql_query = ava.text_to_sql(sql_model, tokenizer, arabic_text, db_schema,
+                                    max_retries=SECURITY_CONFIG.max_sql_retries)
 
         # Enforce read-only SQL before any execution.
         is_safe, validation_error = ava.validate_read_only_sql(sql_query)
         if not is_safe:
             return jsonify({'error': validation_error, 'sql': sql_query}), 400
+
+        # Store the validated query server-side so /export_csv can use it without
+        # trusting any SQL that comes from the client.
+        session['last_sql'] = sql_query
 
         # Execute query
         if test_mode:
@@ -176,9 +196,9 @@ def text_to_speech():
 
 @app.route('/export_csv', methods=['POST'])
 def export_csv():
-    sql_query = request.form.get('sql', '').strip()
+    sql_query = session.get('last_sql', '').strip()
     if not sql_query:
-        return jsonify({'error': 'No SQL query received'}), 400
+        return jsonify({'error': 'No query available to export. Please run a query first.'}), 400
 
     is_safe, validation_error = ava.validate_read_only_sql(sql_query)
     if not is_safe:

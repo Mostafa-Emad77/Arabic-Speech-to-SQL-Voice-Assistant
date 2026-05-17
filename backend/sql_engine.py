@@ -4,6 +4,8 @@ from typing import Any
 
 import requests
 
+from database import validate_read_only_sql
+
 system_message = (
     "You are a highly advanced Arabic text-to-SQL converter. Your mission is to understand first the db schema and relations between it and then accurately transform Arabic "
     "natural language queries into SQL queries with precision and clarity.\n"
@@ -122,6 +124,17 @@ def get_sql_query(db_schema: str, arabic_query: str, model: Any = None, tokenize
     return response.strip()
 
 
-def text_to_sql(model: Any, tokenizer: Any, text: str, db_schema: str) -> str:
+def text_to_sql(model: Any, tokenizer: Any, text: str, db_schema: str, max_retries: int = 0) -> str:
     print("Generating SQL query...")
-    return get_sql_query(db_schema, text, model, tokenizer)
+    last_query = ""
+    attempts = max_retries + 1
+    for attempt in range(attempts):
+        last_query = get_sql_query(db_schema, text, model, tokenizer)
+        is_safe, _ = validate_read_only_sql(last_query)
+        if is_safe:
+            return last_query
+        if attempt < max_retries:
+            print(f"SQL validation failed on attempt {attempt + 1}/{attempts}, retrying...")
+        else:
+            print(f"SQL validation failed on attempt {attempt + 1}/{attempts}. All retries exhausted.")
+    return last_query
