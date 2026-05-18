@@ -1320,11 +1320,11 @@
       playBtn?.addEventListener('click', () => playTTS(responseTx, playBtn));
 
       const downloadCsvBtn = $('download-csv-btn');
-      downloadCsvBtn?.addEventListener('click', () => downloadCsv(sqlText, downloadCsvBtn));
+      downloadCsvBtn?.addEventListener('click', () => downloadCsv(downloadCsvBtn));
     };
 
-    const downloadCsv = async (sqlText, btn) => {
-      if (!sqlText || btn.disabled) return;
+    const downloadCsv = async (btn) => {
+      if (btn.disabled) return;
 
       const label = btn.querySelector('.label');
       const originalLabel = label ? label.textContent : 'تنزيل CSV';
@@ -1334,7 +1334,6 @@
 
       try {
         const body = new FormData();
-        body.append('sql', sqlText);
 
         const res = await fetch('/export_csv', { method: 'POST', body });
         if (!res.ok) {
