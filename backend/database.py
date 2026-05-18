@@ -30,10 +30,10 @@ def connect_to_db(
             password=password,
             database=database,
         )
-        print("Connected to MySQL database")
+        logger.info("Connected to MySQL database")
         return connection
     except Exception as e:
-        print(f"Error connecting to database: {e}")
+        logger.error("Error connecting to database: %s", e)
         return None
 
 
@@ -61,7 +61,7 @@ def get_db_schema(connection: Any) -> str:
 
         return "\n\n".join(schema)
     except Exception as e:
-        print(f"Error getting schema: {e}")
+        logger.error("Error getting schema: %s", e)
         return example_db_schema
 
 
@@ -160,7 +160,6 @@ def execute_query_with_metadata(
         is_safe, validation_error = validate_read_only_sql(query)
         if not is_safe:
             logger.warning("Blocked unsafe SQL query: %s", query)
-            print(f"Blocked SQL query: {validation_error}")
             return None, None, metadata
 
         cursor = connection.cursor()
@@ -185,12 +184,12 @@ def execute_query_with_metadata(
 
         return results, column_names, metadata
     except Exception as e:
-        print(f"Error executing query: {e}")
+        logger.error("Error executing query: %s", e)
         return None, None, metadata
 
 
 def test_mode_query(query: str) -> tuple[list[tuple[str, int, str]], list[str]]:
-    print(f"TEST MODE: Would execute query: {query}")
+    logger.debug("TEST MODE: Would execute query: %s", query)
     return [
         ("Product A", 100, "Electronics"),
         ("Product B", 200, "Home Goods"),

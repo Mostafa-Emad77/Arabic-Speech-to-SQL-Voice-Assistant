@@ -1,10 +1,12 @@
+import logging
 import os
 import re
-from typing import Any
 
 import requests
 
 from database import validate_read_only_sql
+
+logger = logging.getLogger(__name__)
 
 system_message = (
     "You are an Arabic text-to-SQL assistant for MySQL. "
@@ -37,49 +39,40 @@ def get_ollama_think() -> bool:
 def check_ollama_connection() -> None:
     base_url = get_ollama_base_url()
     try:
-        response = requests.get(f"{base_url}/api/tags")
+        response = requests.get(f"{base_url}/api/tags", timeout=10)
         if response.status_code == 200:
-            print("Successfully connected to Ollama server")
+            logger.info("Successfully connected to Ollama server")
         else:
-            print(f"Warning: Ollama server returned status code {response.status_code}")
+            logger.warning("Ollama server returned status code %s", response.status_code)
     except Exception as e:
-        print(f"Warning: Could not connect to Ollama server: {e}")
+        logger.warning("Could not connect to Ollama server: %s", e)
 
 
-def generate_resp(messages: list[dict[str, str]], model: Any = None, tokenizer: Any = None) -> str:
+def generate_resp(messages: list[dict[str, str]]) -> str:
     api_url = f"{get_ollama_base_url()}/api/chat"
-
-    try:
-        payload = {
-            "model": get_ollama_model(),
-            "messages": messages,
-            "think": get_ollama_think(),
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "top_p": 0.8,
-                "num_predict": 1024,
-            },
-        }
-        response = requests.post(api_url, json=payload)
-
-        if response.status_code == 200:
-            result = response.json()
-            message_content = result.get("message", {}).get("content", "")
-            if message_content:
-                return message_content
-
-            print("Ollama response did not include message content")
-            return "SELECT * FROM employees LIMIT 5;"
-
-        print(f"API request failed with status code {response.status_code}: {response.text}")
-        return "SELECT * FROM employees LIMIT 5;"
-    except Exception as e:
-        print(f"Error in API request: {e}")
-        return "SELECT * FROM employees LIMIT 5;"
+    payload = {
+        "model": get_ollama_model(),
+        "messages": messages,
+        "think": get_ollama_think(),
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.8,
+            "num_predict": 1024,
+        },
+    }
+    response = requests.post(api_url, json=payload, timeout=60)
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Ollama API request failed with status {response.status_code}: {response.text}"
+        )
+    message_content = response.json().get("message", {}).get("content", "")
+    if not message_content:
+        raise RuntimeError("Ollama response did not include message content")
+    return message_content
 
 
-def get_sql_query(db_schema: str, arabic_query: str, model: Any = None, tokenizer: Any = None) -> str:
+def get_sql_query(db_schema: str, arabic_query: str) -> str:
     enhanced_system_message = (
         system_message
         + "\n"
@@ -106,7 +99,7 @@ def get_sql_query(db_schema: str, arabic_query: str, model: Any = None, tokenize
         {"role": "user", "content": instruction_message},
     ]
 
-    response = generate_resp(messages, model, tokenizer)
+    response = generate_resp(messages)
 
     match = re.search(r"```sql\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE)
     if match:
@@ -118,17 +111,17 @@ def get_sql_query(db_schema: str, arabic_query: str, model: Any = None, tokenize
     return response.strip()
 
 
-def text_to_sql(model: Any, tokenizer: Any, text: str, db_schema: str, max_retries: int = 0) -> str:
-    print("Generating SQL query...")
+def text_to_sql(text: str, db_schema: str, max_retries: int = 0) -> str:
+    logger.info("Generating SQL query...")
     last_query = ""
     attempts = max_retries + 1
     for attempt in range(attempts):
-        last_query = get_sql_query(db_schema, text, model, tokenizer)
+        last_query = get_sql_query(db_schema, text)
         is_safe, _ = validate_read_only_sql(last_query)
         if is_safe:
             return last_query
         if attempt < max_retries:
-            print(f"SQL validation failed on attempt {attempt + 1}/{attempts}, retrying...")
+            logger.warning("SQL validation failed on attempt %d/%d, retrying...", attempt + 1, attempts)
         else:
-            print(f"SQL validation failed on attempt {attempt + 1}/{attempts}. All retries exhausted.")
+            logger.warning("SQL validation failed on attempt %d/%d. All retries exhausted.", attempt + 1, attempts)
     return last_query

@@ -37,7 +37,7 @@ def _build_test_metadata(results: list[tuple[Any, ...]]) -> dict[str, Any]:
 def _build_runtime_state() -> dict[str, Any]:
     security_config = load_security_config()
 
-    transcriber, sql_model, tokenizer, tts_processor, tts_model = ava.initialize_models()
+    transcriber, tts_processor, tts_model = ava.initialize_models()
     db_connection = ava.connect_to_db(
         host=os.getenv("DB_HOST"),
         user=os.getenv("DB_USER"),
@@ -55,8 +55,6 @@ def _build_runtime_state() -> dict[str, Any]:
     return {
         "security_config": security_config,
         "transcriber": transcriber,
-        "sql_model": sql_model,
-        "tokenizer": tokenizer,
         "tts_processor": tts_processor,
         "tts_model": tts_model,
         "db_connection": db_connection,
@@ -101,6 +99,28 @@ def _execute_query_with_metadata(sql_query: str, runtime: dict[str, Any]) -> tup
     )
 
 
+def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONResponse | dict[str, Any]:
+    sql_query = ava.text_to_sql(
+        arabic_text,
+        runtime["db_schema"],
+        max_retries=runtime["security_config"].max_sql_retries,
+    )
+
+    is_safe, validation_error = ava.validate_read_only_sql(sql_query)
+    if not is_safe:
+        return JSONResponse({"error": validation_error, "sql": sql_query}, status_code=400)
+
+    results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
+    response_text = ava.format_response(results, column_names, metadata)
+
+    return {
+        "input": arabic_text,
+        "sql": sql_query,
+        "response": response_text,
+        "metadata": metadata,
+    }
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(FRONTEND_FILE)
@@ -116,21 +136,7 @@ def process_text(request: Request, text: str = Form("")):
         return JSONResponse({"error": prompt_error}, status_code=400)
 
     try:
-        sql_query = ava.text_to_sql(runtime["sql_model"], runtime["tokenizer"], arabic_text, runtime["db_schema"])
-
-        is_safe, validation_error = ava.validate_read_only_sql(sql_query)
-        if not is_safe:
-            return JSONResponse({"error": validation_error, "sql": sql_query}, status_code=400)
-
-        results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
-        response_text = ava.format_response(results, column_names, metadata)
-
-        return {
-            "input": arabic_text,
-            "sql": sql_query,
-            "response": response_text,
-            "metadata": metadata,
-        }
+        return _process_arabic_text(arabic_text, runtime)
     except Exception:
         logger.exception("Text processing failed")
         return JSONResponse({"error": "Failed to process text request"}, status_code=500)
@@ -159,21 +165,7 @@ def process_audio(request: Request, audio: str = Form("")):
         if not is_prompt_safe:
             return JSONResponse({"error": prompt_error}, status_code=400)
 
-        sql_query = ava.text_to_sql(runtime["sql_model"], runtime["tokenizer"], arabic_text, runtime["db_schema"])
-
-        is_safe, validation_error = ava.validate_read_only_sql(sql_query)
-        if not is_safe:
-            return JSONResponse({"error": validation_error, "sql": sql_query}, status_code=400)
-
-        results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
-        response_text = ava.format_response(results, column_names, metadata)
-
-        return {
-            "input": arabic_text,
-            "sql": sql_query,
-            "response": response_text,
-            "metadata": metadata,
-        }
+        return _process_arabic_text(arabic_text, runtime)
     except Exception:
         logger.exception("Audio processing failed")
         return JSONResponse({"error": "Failed to process audio request"}, status_code=500)

@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 from typing import Any
@@ -5,6 +6,8 @@ from typing import Any
 from faster_whisper import WhisperModel
 import sounddevice as sd
 import soundfile as sf
+
+logger = logging.getLogger(__name__)
 
 
 def record_audio(duration: int = 10, sample_rate: int = 16000) -> str:
@@ -19,7 +22,7 @@ def record_audio(duration: int = 10, sample_rate: int = 16000) -> str:
 
 
 def initialize_asr_model() -> Any | None:
-    print("Loading faster-whisper ASR model...")
+    logger.info("Loading faster-whisper ASR model...")
     model_name = os.getenv("ASR_MODEL", "large-v3-turbo")
     device = os.getenv("ASR_DEVICE", "cuda")
     compute_type = os.getenv("ASR_COMPUTE_TYPE", "int8_float16")
@@ -27,7 +30,7 @@ def initialize_asr_model() -> Any | None:
     try:
         return WhisperModel(model_name, device=device, compute_type=compute_type)
     except Exception as e:
-        print(f"Error loading faster-whisper model: {e}")
+        logger.error("Error loading faster-whisper model: %s", e)
         return None
 
 
@@ -41,7 +44,7 @@ def transcribe_audio(transcriber: Any, audio_file: str) -> str:
         text = " ".join(segment.text.strip() for segment in segments if segment.text).strip()
         return text or "لم أتمكن من فهم الكلام"
     except Exception as e:
-        print(f"Error in transcription: {e}")
+        logger.error("Error in transcription: %s", e)
         return "لم أتمكن من فهم الكلام"
     finally:
         if os.path.exists(audio_file):

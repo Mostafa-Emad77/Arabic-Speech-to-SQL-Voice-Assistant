@@ -1,8 +1,6 @@
 import os
 from typing import Any
 
-from dotenv import load_dotenv
-
 from database import (
     connect_to_db,
     execute_query_with_metadata,
@@ -21,9 +19,6 @@ from tts_engine import (
     generate_speech_with_local_model,
     initialize_local_arabic_tts,
 )
-
-# Load environment variables from .env file
-load_dotenv()
 
 __all__ = [
     "connect_to_db",
@@ -44,20 +39,17 @@ __all__ = [
     "validate_read_only_sql",
 ]
 
-def initialize_models() -> tuple[Any, None, None, Any | None, Any | None]:
-    transcriber = initialize_asr_model()
 
+def initialize_models() -> tuple[Any, Any | None, Any | None]:
+    transcriber = initialize_asr_model()
     print("Loading Arabic Text-to-SQL model...")
     check_ollama_connection()
-    model = None
-    tokenizer = None
-
     tts_processor, tts_model = initialize_local_arabic_tts()
-    return transcriber, model, tokenizer, tts_processor, tts_model
+    return transcriber, tts_processor, tts_model
 
 
 def main() -> None:
-    transcriber, sql_model, tokenizer, tts_processor, tts_model = initialize_models()
+    transcriber, tts_processor, tts_model = initialize_models()
     db_connection = connect_to_db()
     security_config = load_security_config()
 
@@ -84,8 +76,7 @@ def main() -> None:
                 arabic_text = input()
                 print(f"Text input: {arabic_text}")
 
-            sql_query = text_to_sql(sql_model, tokenizer, arabic_text, db_schema,
-                                    max_retries=security_config.max_sql_retries)
+            sql_query = text_to_sql(arabic_text, db_schema, max_retries=security_config.max_sql_retries)
             print(f"Generated SQL: {sql_query}")
 
             is_safe, validation_error = validate_read_only_sql(sql_query)

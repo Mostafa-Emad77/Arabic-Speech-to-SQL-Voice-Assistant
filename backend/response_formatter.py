@@ -15,10 +15,11 @@ def format_response(
     if not column_names:
         return "تم تنفيذ الاستعلام لكن لم يتم العثور على أسماء الأعمدة."
 
-    response = "وجدت النتائج التالية:\n"
-    for row in results:
-        row_data = [f"{column_names[i]}: {value}" for i, value in enumerate(row)]
-        response += ", ".join(row_data) + "\n"
+    rows = [
+        ", ".join(f"{column_names[i]}: {value}" for i, value in enumerate(row))
+        for row in results
+    ]
+    response = "وجدت النتائج التالية:\n" + "\n".join(rows) + "\n"
 
     if metadata and metadata.get("overflow"):
         row_limit = metadata.get("row_limit")

@@ -1,10 +1,13 @@
 import io
+import logging
 import os
 from importlib.resources import files
 from typing import Any
 
 import sounddevice as sd
 import soundfile as sf
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_reference_audio_file() -> str | None:
@@ -67,7 +70,7 @@ def _infer_speech(context: Any, model: Any, text: str) -> tuple[Any, int]:
 
 
 def initialize_local_arabic_tts() -> tuple[Any | None, Any | None]:
-    print("Loading SILMA Arabic TTS model...")
+    logger.info("Loading SILMA Arabic TTS model...")
     try:
         from silma_tts.api import SilmaTTS
 
@@ -75,31 +78,26 @@ def initialize_local_arabic_tts() -> tuple[Any | None, Any | None]:
         model = SilmaTTS()
         return context, model
     except Exception as e:
-        print(f"Error loading SILMA Arabic TTS model: {e}")
+        logger.error("Error loading SILMA Arabic TTS model: %s", e)
         return None, None
 
 
 def generate_speech_with_local_model(processor: Any, model: Any, text: str) -> bool:
     try:
-        print("Generating speech using SILMA Arabic TTS model...")
+        logger.info("Generating speech using SILMA Arabic TTS model...")
         audio_data, sample_rate = _infer_speech(processor, model, text)
-        print("Playing response...")
         sd.play(audio_data, samplerate=sample_rate)
         sd.wait()
         return True
     except Exception as e:
-        print(f"Error generating speech with local model: {e}")
+        logger.error("Error generating speech with local model: %s", e)
         return False
 
 
 def generate_speech_for_web(processor: Any, model: Any, text: str) -> bytes:
-    try:
-        print("Generating speech using SILMA Arabic TTS model...")
-        audio_data, sample_rate = _infer_speech(processor, model, text)
-        byte_io = io.BytesIO()
-        sf.write(byte_io, audio_data, samplerate=sample_rate, format="WAV")
-        byte_io.seek(0)
-        return byte_io.getvalue()
-    except Exception as e:
-        print(f"Error generating speech: {e}")
-        raise e
+    logger.info("Generating speech using SILMA Arabic TTS model...")
+    audio_data, sample_rate = _infer_speech(processor, model, text)
+    byte_io = io.BytesIO()
+    sf.write(byte_io, audio_data, samplerate=sample_rate, format="WAV")
+    byte_io.seek(0)
+    return byte_io.getvalue()
