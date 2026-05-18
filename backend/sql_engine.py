@@ -5,23 +5,18 @@ from typing import Any
 import requests
 
 system_message = (
-    "You are a highly advanced Arabic text-to-SQL converter. Your mission is to understand first the db schema and relations between it and then accurately transform Arabic "
-    "natural language queries into SQL queries with precision and clarity.\n"
-    "When the user asks about names or people, always search using the Arabic name fields in the database rather than English name fields.\n"
-    "When users ask any data or conditions the query must always try to pull all the data from the database.\n"
-    "When handling hiring dates or employment dates:\n"
-    "- For oldest employees (earliest hire date), use ORDER BY hire_date ASC since older dates have smaller values (e.g., 2013 is before 2022)\n"
-    "- For newest employees (most recent hire date), use ORDER BY hire_date DESC since newer dates have larger values\n"
-    "- Always include the hire_date in the SELECT clause when sorting by date\n"
-    "When handling department names:\n"
-    "- IMPORTANT: Department names in the database are stored in Arabic\n"
-    "- NEVER translate department names to English in your SQL queries\n"
-    "- Always extract the Arabic department name directly from the user's query\n"
-    "- For example, if user asks about 'قسم الإشراف', use WHERE department_name LIKE '%قسم الإشراف%' or '%الإشراف%'\n"
-    "- If user asks about 'قسم الأمن', use WHERE department_name LIKE '%قسم الأمن%' or '%الأمن%'\n"
-    "- Always use the exact Arabic text from the user's query in your SQL conditions\n"
-    "- Always join tables using the correct key relationships based on the schema\n"
-    "- IMPORTANT: Never assume column names - always derive them from the provided schema\n"
+    "You are an Arabic text-to-SQL assistant for MySQL. "
+    "Convert the user's Arabic request into one valid read-only SQL query using the provided schema.\n"
+    "Primary domain: employee data (employees and directly related tables).\n"
+    "Rules:\n"
+    "- Use only tables and columns that exist in the provided schema.\n"
+    "- Prefer employee-related tables when the question is about people, jobs, salaries, departments, or hiring.\n"
+    "- When name columns exist in Arabic and English, prefer Arabic name columns for matching and filtering.\n"
+    "- Keep Arabic filter values exactly as provided by the user; do not translate literals.\n"
+    "- Use the correct joins based on key relationships in the schema.\n"
+    "- For oldest employees use ORDER BY hire_date ASC; for newest employees use ORDER BY hire_date DESC.\n"
+    "- Include hire_date in SELECT when sorting by hire_date.\n"
+    "- Return SQL only, without explanations or markdown.\n"
 )
 
 
@@ -31,6 +26,10 @@ def get_ollama_base_url() -> str:
 
 def get_ollama_model() -> str:
     return os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+
+def get_ollama_think() -> bool:
+    return os.getenv("OLLAMA_THINK", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def check_ollama_connection() -> None:
@@ -52,6 +51,7 @@ def generate_resp(messages: list[dict[str, str]], model: Any = None, tokenizer: 
         payload = {
             "model": get_ollama_model(),
             "messages": messages,
+            "think": get_ollama_think(),
             "stream": False,
             "options": {
                 "temperature": 0.1,
@@ -81,16 +81,10 @@ def get_sql_query(db_schema: str, arabic_query: str, model: Any = None, tokenize
     enhanced_system_message = (
         system_message
         + "\n"
-        + "IMPORTANT: When filtering for Arabic terms in the database:\n"
-        + "- Always use the actual Arabic text from the user's query in the LIKE conditions\n"
-        + "- For example, if the user mentions 'قسم الأمن', extract 'الأمن' or use the full phrase as appropriate\n"
-        + "- Do NOT translate Arabic terms to English in your SQL conditions\n"
-        + "- Always determine the correct column names from the provided schema"
-    )
-    enhanced_system_message += (
-        "\n"
-        + "IMPORTANT: When filtering for Arabic department names, use the Arabic text in the LIKE condition. "
-        + "For example, for 'قسم الأمن', use WHERE d.department_name LIKE '%الأمن%', NOT '%Security%'."
+        + "Additional SQL style constraints:\n"
+        + "- Generate exactly one SELECT statement.\n"
+        + "- Prefer explicit JOIN conditions when multiple tables are used.\n"
+        + "- Use LIMIT only when the user asks for top/first/few records or when ordering by rank."
     )
 
     instruction_message = "\n".join(

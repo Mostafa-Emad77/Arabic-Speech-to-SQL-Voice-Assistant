@@ -22,7 +22,7 @@ An open-source Arabic Voice Assistant built with Python and MySQL, featuring voi
 ## Features
 - **Arabic Speech Recognition:** Converts spoken Arabic to text using Python libraries.
 - **MySQL Database Integration:** Stores and retrieves user data and assistant responses.
-- **Web Interface:** Simple Flask-based web UI for interaction.
+- **Web Interface:** FastAPI-based backend serving a simple web UI for interaction.
 - **Modular Codebase:** Easy to extend and maintain.
 - **Integration with Ollama:** You need to have [Ollama](https://ollama.com/) installed and running locally to enable text-to-SQL generation.
 - **Local ASR with faster-whisper:** Uses `large-v3-turbo` with INT8 compute for fast Arabic transcription on GPU.
@@ -32,7 +32,7 @@ An open-source Arabic Voice Assistant built with Python and MySQL, featuring voi
 ## Project Structure
 ```
 backend/
-   app.py                    # Main Flask application (web server)
+   main.py                   # Main FastAPI application (web server)
    arabic_voice_assistant.py # Orchestrator/facade for assistant workflows
    speech.py                 # Audio recording and transcription helpers
    sql_engine.py             # Ollama text-to-SQL generation logic
@@ -59,7 +59,8 @@ README.md                 # Project documentation
 - Recommended: Virtual environment for Python
 
 ### Python Packages
-- Flask
+- fastapi
+- uvicorn
 - mysql-connector-python
 - sounddevice (for microphone input)
 - soundfile
@@ -120,11 +121,12 @@ SQL_MAX_RESULT_ROWS=200
 SQL_MAX_EXPORT_ROWS=20000
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.1:8b
+OLLAMA_THINK=false
 TTS_REF_FILE=
 TTS_REF_TEXT=
 TTS_SPEED=1.0
-FLASK_HOST=127.0.0.1
-FLASK_PORT=5000
+FASTAPI_HOST=127.0.0.1
+FASTAPI_PORT=5000
 FLASK_DEBUG=false
 ```
 
@@ -139,6 +141,7 @@ FLASK_DEBUG=false
 - `SQL_MAX_EXPORT_ROWS` caps CSV export row count to keep export operations bounded.
 - Set `OLLAMA_BASE_URL` to your Ollama server URL if different from the default.
 - Set `OLLAMA_MODEL` to the local model tag you pulled in Ollama.
+- Set `OLLAMA_THINK=false` to disable model thinking (faster responses on thinking-capable models).
 - Optional: set `TTS_REF_FILE` to a local WAV reference voice sample for SILMA TTS.
 - Optional: set `TTS_REF_TEXT` to the transcript of `TTS_REF_FILE` (if left empty, SILMA can transcribe it).
 - Optional: set `TTS_SPEED` to control TTS speed (default `1.0`).
@@ -158,7 +161,7 @@ FLASK_DEBUG=false
 1. **Start Ollama and make sure your configured model is available locally.**
 2. **Start the application:**
    ```pwsh
-   python backend/app.py
+   python backend/main.py
    ```
 3. **Open your browser:**
    - Go to [http://localhost:5000](http://localhost:5000) (or the port specified in your app).

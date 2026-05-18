@@ -1,4 +1,6 @@
-Flask
+fastapi
+uvicorn
+python-multipart
 mysql-connector-python
 python-dotenv
 torch
