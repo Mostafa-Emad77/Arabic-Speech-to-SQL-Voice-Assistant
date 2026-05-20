@@ -55,7 +55,7 @@ README.md                 # Project documentation
 - Python 3.12+
 - MySQL Server (local or remote)
 - [Ollama](https://ollama.com/) (for local language model inference)
-- [FFmpeg](https://ffmpeg.org/) available in system PATH (required by silma-tts)
+- Internet connection on first run to download Supertonic-3 model assets
 - Recommended: Virtual environment for Python
 
 ### Python Packages
@@ -65,7 +65,7 @@ README.md                 # Project documentation
 - sounddevice (for microphone input)
 - soundfile
 - faster-whisper
-- silma-tts
+- supertonic
 - sqlglot
 - Any other dependencies listed in `requirements.txt`
 
@@ -122,9 +122,9 @@ SQL_MAX_EXPORT_ROWS=20000
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3.1:8b
 OLLAMA_THINK=false
-TTS_REF_FILE=
-TTS_REF_TEXT=
-TTS_SPEED=1.0
+TTS_LANG=ar
+TTS_VOICE=M1
+TTS_AUTO_DOWNLOAD=true
 FASTAPI_HOST=127.0.0.1
 FASTAPI_PORT=5000
 FLASK_DEBUG=false
@@ -142,9 +142,9 @@ FLASK_DEBUG=false
 - Set `OLLAMA_BASE_URL` to your Ollama server URL if different from the default.
 - Set `OLLAMA_MODEL` to the local model tag you pulled in Ollama.
 - Set `OLLAMA_THINK=false` to disable model thinking (faster responses on thinking-capable models).
-- Optional: set `TTS_REF_FILE` to a local WAV reference voice sample for SILMA TTS.
-- Optional: set `TTS_REF_TEXT` to the transcript of `TTS_REF_FILE` (if left empty, SILMA can transcribe it).
-- Optional: set `TTS_SPEED` to control TTS speed (default `1.0`).
+- Set `TTS_LANG` to target language (`ar` for Arabic).
+- Set `TTS_VOICE` to a Supertonic preset voice (default `M1`).
+- Set `TTS_AUTO_DOWNLOAD=true` to allow automatic model download on first run.
 - Never commit your `.env` file to version control.
 - You can copy `.env.example` to `.env` and then edit values.
 
@@ -159,13 +159,17 @@ FLASK_DEBUG=false
 
 ## Usage
 1. **Start Ollama and make sure your configured model is available locally.**
-2. **Start the application:**
+2. **Run model prestart checks (ASR + TTS):**
+   ```pwsh
+   python backend/prestart_model_check.py --allow-download
+   ```
+3. **Start the application:**
    ```pwsh
    python backend/main.py
    ```
-3. **Open your browser:**
+4. **Open your browser:**
    - Go to [http://localhost:5000](http://localhost:5000) (or the port specified in your app).
-4. **Interact with the assistant:**
+5. **Interact with the assistant:**
    - Use the web interface to send voice/text commands and receive responses.
 
 ---

@@ -1,7 +1,7 @@
 import io
 import logging
 import os
-from importlib.resources import files
+import tempfile
 from typing import Any
 
 import sounddevice as sd
@@ -10,82 +10,65 @@ import soundfile as sf
 logger = logging.getLogger(__name__)
 
 
-def _resolve_reference_audio_file() -> str | None:
-    env_ref_file = os.getenv("TTS_REF_FILE", "").strip()
-    if env_ref_file:
-        if os.path.exists(env_ref_file):
-            return env_ref_file
-        raise FileNotFoundError(f"TTS_REF_FILE does not exist: {env_ref_file}")
-
-    package_ref_file = files("silma_tts").joinpath("infer/ref_audio_samples/ar.ref.24k.wav")
-    package_ref_path = str(package_ref_file)
-    if os.path.exists(package_ref_path):
-        return package_ref_path
-
-    return None
+def _parse_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _get_silma_context() -> dict[str, Any]:
-    ref_file = _resolve_reference_audio_file()
-    if not ref_file:
-        raise FileNotFoundError(
-            "Could not resolve SILMA reference audio. Set TTS_REF_FILE in your .env file."
-        )
-
-    ref_text_env = os.getenv("TTS_REF_TEXT", "").strip()
-    ref_text = ref_text_env or None
-
-    speed_env = os.getenv("TTS_SPEED", "1.0").strip()
-    try:
-        speed = float(speed_env)
-    except ValueError:
-        speed = 1.0
+def _get_supertonic_context() -> dict[str, Any]:
+    voice_name = os.getenv("TTS_VOICE", "M1").strip() or "M1"
+    lang = os.getenv("TTS_LANG", "ar").strip() or "ar"
+    auto_download = _parse_bool(os.getenv("TTS_AUTO_DOWNLOAD", "true"), default=True)
 
     return {
-        "ref_file": ref_file,
-        "ref_text": ref_text,
-        "speed": speed,
+        "voice_name": voice_name,
+        "lang": lang,
+        "auto_download": auto_download,
     }
 
 
-def _infer_speech(context: Any, model: Any, text: str) -> tuple[Any, int]:
+def _synthesize_to_wav_bytes(context: Any, model: Any, text: str) -> bytes:
     if not text or not text.strip():
         raise ValueError("Cannot generate TTS for empty text")
     if context is None or model is None:
-        raise ValueError("SILMA TTS model is not initialized")
+        raise ValueError("Supertonic TTS model is not initialized")
 
-    ref_file = context.get("ref_file")
-    ref_text = context.get("ref_text")
-    speed = context.get("speed", 1.0)
+    voice_style = context.get("voice_style")
+    lang = context.get("lang", "ar")
+    wav, _ = model.synthesize(text, voice_style=voice_style, lang=lang)
 
-    wav, sr, _ = model.infer(
-        ref_file=ref_file,
-        ref_text=ref_text,
-        gen_text=text,
-        speed=speed,
-        file_wave=None,
-        seed=None,
-    )
-    return wav, sr
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+        temp_path = tmp_file.name
+
+    try:
+        model.save_audio(wav, temp_path)
+        with open(temp_path, "rb") as wav_file:
+            return wav_file.read()
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def initialize_local_arabic_tts() -> tuple[Any | None, Any | None]:
-    logger.info("Loading SILMA Arabic TTS model...")
+    logger.info("Loading Supertonic-3 Arabic TTS model...")
     try:
-        from silma_tts.api import SilmaTTS
+        from supertonic import TTS
 
-        context = _get_silma_context()
-        model = SilmaTTS()
+        context = _get_supertonic_context()
+        model = TTS(auto_download=context["auto_download"])
+        context["voice_style"] = model.get_voice_style(voice_name=context["voice_name"])
         return context, model
     except Exception as e:
-        logger.error("Error loading SILMA Arabic TTS model: %s", e)
+        logger.error("Error loading Supertonic-3 Arabic TTS model: %s", e)
         return None, None
 
 
 def generate_speech_with_local_model(processor: Any, model: Any, text: str) -> bool:
     try:
-        logger.info("Generating speech using SILMA Arabic TTS model...")
-        audio_data, sample_rate = _infer_speech(processor, model, text)
+        logger.info("Generating speech using Supertonic-3 Arabic TTS model...")
+        wav_bytes = _synthesize_to_wav_bytes(processor, model, text)
+        audio_data, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
         sd.play(audio_data, samplerate=sample_rate)
         sd.wait()
         return True
@@ -95,9 +78,5 @@ def generate_speech_with_local_model(processor: Any, model: Any, text: str) -> b
 
 
 def generate_speech_for_web(processor: Any, model: Any, text: str) -> bytes:
-    logger.info("Generating speech using SILMA Arabic TTS model...")
-    audio_data, sample_rate = _infer_speech(processor, model, text)
-    byte_io = io.BytesIO()
-    sf.write(byte_io, audio_data, samplerate=sample_rate, format="WAV")
-    byte_io.seek(0)
-    return byte_io.getvalue()
+    logger.info("Generating speech using Supertonic-3 Arabic TTS model...")
+    return _synthesize_to_wav_bytes(processor, model, text)

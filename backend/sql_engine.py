@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from pathlib import Path
 
 import requests
 
@@ -36,12 +37,67 @@ def get_ollama_think() -> bool:
     return os.getenv("OLLAMA_THINK", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _resolve_ollama_log_file() -> Path | None:
+    explicit_path = os.getenv("OLLAMA_LOG_PATH", "").strip()
+    if explicit_path:
+        path = Path(explicit_path)
+        if path.exists() and path.is_file():
+            return path
+
+    local_appdata = os.getenv("LOCALAPPDATA", "").strip()
+    candidates = [
+        Path(local_appdata) / "Ollama" / "app.log" if local_appdata else None,
+        Path.home() / ".ollama" / "logs" / "app.log",
+        Path.home() / ".ollama" / "logs" / "server.log",
+    ]
+
+    for candidate in candidates:
+        if candidate and candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _get_ollama_log_tail() -> str:
+    include_tail = os.getenv("OLLAMA_INCLUDE_LOG_TAIL", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not include_tail:
+        return ""
+
+    log_file = _resolve_ollama_log_file()
+    if not log_file:
+        return ""
+
+    try:
+        tail_lines_raw = os.getenv("OLLAMA_LOG_TAIL_LINES", "25").strip()
+        tail_lines = max(1, min(200, int(tail_lines_raw)))
+    except ValueError:
+        tail_lines = 25
+
+    try:
+        lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return ""
+
+    if not lines:
+        return ""
+
+    tail = "\n".join(lines[-tail_lines:])
+    return f"\nRecent Ollama logs ({log_file}):\n{tail}"
+
+
 def check_ollama_connection() -> None:
     base_url = get_ollama_base_url()
     try:
         response = requests.get(f"{base_url}/api/tags", timeout=10)
         if response.status_code == 200:
             logger.info("Successfully connected to Ollama server")
+            ollama_log_file = _resolve_ollama_log_file()
+            if ollama_log_file:
+                logger.info("Using Ollama log file: %s", ollama_log_file)
         else:
             logger.warning("Ollama server returned status code %s", response.status_code)
     except Exception as e:
@@ -61,14 +117,19 @@ def generate_resp(messages: list[dict[str, str]]) -> str:
             "num_predict": 1024,
         },
     }
-    response = requests.post(api_url, json=payload, timeout=60)
+    try:
+        response = requests.post(api_url, json=payload, timeout=60)
+    except Exception as exc:
+        raise RuntimeError(f"Ollama API request failed: {exc}{_get_ollama_log_tail()}") from exc
+
     if response.status_code != 200:
         raise RuntimeError(
             f"Ollama API request failed with status {response.status_code}: {response.text}"
+            f"{_get_ollama_log_tail()}"
         )
     message_content = response.json().get("message", {}).get("content", "")
     if not message_content:
-        raise RuntimeError("Ollama response did not include message content")
+        raise RuntimeError(f"Ollama response did not include message content{_get_ollama_log_tail()}")
     return message_content
 
 

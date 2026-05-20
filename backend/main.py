@@ -8,6 +8,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+LOG_LEVEL_NAME = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = getattr(logging, LOG_LEVEL_NAME, logging.INFO)
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 import arabic_voice_assistant as ava
@@ -35,8 +41,10 @@ def _build_test_metadata(results: list[tuple[Any, ...]]) -> dict[str, Any]:
 
 
 def _build_runtime_state() -> dict[str, Any]:
+    logger.info("Initializing runtime state...")
     security_config = load_security_config()
 
+    logger.info("Loading ASR, LLM and TTS models...")
     transcriber, tts_processor, tts_model = ava.initialize_models()
     db_connection = ava.connect_to_db(
         host=os.getenv("DB_HOST"),
@@ -48,9 +56,11 @@ def _build_runtime_state() -> dict[str, Any]:
     if db_connection:
         db_schema = ava.get_db_schema(db_connection)
         test_mode = False
+        logger.info("Database connected and schema loaded.")
     else:
         db_schema = ava.example_db_schema
         test_mode = True
+        logger.warning("Database connection failed. Running in TEST MODE.")
 
     return {
         "security_config": security_config,
@@ -66,6 +76,7 @@ def _build_runtime_state() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.runtime = _build_runtime_state()
+    logger.info("Application startup complete.")
     yield
 
     runtime = app.state.runtime
@@ -242,4 +253,4 @@ if __name__ == "__main__":
     debug_mode = os.getenv("DEBUG", "false").lower() == "true"
     host = os.getenv("FASTAPI_HOST", "127.0.0.1")
     port = int(os.getenv("FASTAPI_PORT", "5000"))
-    uvicorn.run(app, host=host, port=port, reload=debug_mode)
+    uvicorn.run(app, host=host, port=port, reload=debug_mode, log_level="info", access_log=True)
