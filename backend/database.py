@@ -46,7 +46,8 @@ def get_db_schema(connection: Any) -> str:
         schema: list[str] = []
         for table in tables:
             table_name = table[0]
-            cursor.execute(f"DESCRIBE {table_name}")
+            safe_name = table_name.replace("`", "``")
+            cursor.execute(f"DESCRIBE `{safe_name}`")
             columns = cursor.fetchall()
 
             table_schema = f"CREATE TABLE {table_name} (\n"

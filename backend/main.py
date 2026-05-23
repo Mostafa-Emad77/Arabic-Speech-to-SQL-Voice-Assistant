@@ -20,12 +20,14 @@ import arabic_voice_assistant as ava
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from security import load_security_config, sanitize_user_prompt, validate_user_prompt
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-FRONTEND_FILE = PROJECT_ROOT / "frontend" / "index.html"
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
+FRONTEND_FILE = FRONTEND_DIR / "index.html"
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -89,6 +91,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Arabic Speech-to-SQL Assistant", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
 def _runtime(request: Request) -> dict[str, Any]:
