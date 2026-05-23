@@ -20,6 +20,7 @@ import arabic_voice_assistant as ava
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from security import load_security_config, sanitize_user_prompt, validate_user_prompt
@@ -91,6 +92,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Arabic Speech-to-SQL Assistant", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
