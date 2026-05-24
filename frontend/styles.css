@@ -308,6 +308,7 @@ h1.stage-title em::after {
 .mic-caption-hint {
   font-size: 14px; color: var(--ink-2);
 }
+.mic-timer[hidden] { display: none; }
 .mic-timer {
   display: inline-flex; align-items: center; gap: 8px;
   font-family: var(--f-mono);

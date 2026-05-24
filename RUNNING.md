@@ -6,7 +6,7 @@
 
 ```pwsh
 Get-Service *mysql*
-Start-Service MySQL80
+Start-Service MySQL97
 ```
 
 ## 2) Start Ollama

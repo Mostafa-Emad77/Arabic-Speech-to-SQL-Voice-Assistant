@@ -228,8 +228,9 @@
     }
   };
   const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     if (recordTimerId) { clearInterval(recordTimerId); recordTimerId = null; }
+    setMicState('processing');
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   };
   const handleRecordingComplete = async () => {
     if (audioChunks.length === 0) { setMicState('idle'); return; }

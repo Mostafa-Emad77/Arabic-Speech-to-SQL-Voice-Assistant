@@ -9,3 +9,4 @@ requests~=2.32.3
 supertonic>=0.3.0
 faster-whisper>=1.1.0
 sqlglot~=30.8.0
+num2words~=0.5.14

@@ -140,7 +140,11 @@ def get_sql_query(db_schema: str, arabic_query: str) -> str:
         + "Additional SQL style constraints:\n"
         + "- Generate exactly one SELECT statement.\n"
         + "- Prefer explicit JOIN conditions when multiple tables are used.\n"
-        + "- Use LIMIT only when the user asks for top/first/few records or when ordering by rank."
+        + "- Use LIMIT only when the user asks for top/first/few records or when ordering by rank.\n"
+        + "- Never use aggregate functions (COUNT, SUM, AVG, MIN, MAX) in ORDER BY without a GROUP BY clause.\n"
+        + "- Always include GROUP BY when mixing aggregate and non-aggregate columns in SELECT.\n"
+        + "- For 'lowest/highest/top/bottom N' queries, use ORDER BY column ASC/DESC LIMIT N. Never use nested subqueries like WHERE x < (SELECT MIN(x) ...).\n"
+        + "- Keep queries simple and flat. Avoid deeply nested subqueries when ORDER BY + LIMIT achieves the same result."
     )
 
     instruction_message = "\n".join(
