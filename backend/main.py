@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import csv
 import io
@@ -18,11 +19,12 @@ logger = logging.getLogger(__name__)
 
 import arabic_voice_assistant as ava
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Request, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from data_upload import create_database_from_files, drop_temp_database
 from security import load_security_config, sanitize_user_prompt, validate_user_prompt
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -73,22 +75,31 @@ def _build_runtime_state() -> dict[str, Any]:
         "db_connection": db_connection,
         "db_schema": db_schema,
         "test_mode": test_mode,
+        "data_source": "demo",
+        "temp_db_name": None,
+        "table_names": [],
     }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.runtime = _build_runtime_state()
+    app.state.runtime_lock = asyncio.Lock()
     logger.info("Application startup complete.")
     yield
 
     runtime = app.state.runtime
+    # Close connection before dropping the database
     db_connection = runtime.get("db_connection")
     if db_connection:
         try:
             db_connection.close()
         except Exception:
             pass
+
+    temp_db = runtime.get("temp_db_name")
+    if temp_db:
+        drop_temp_database(temp_db)
 
 
 app = FastAPI(title="Arabic Speech-to-SQL Assistant", lifespan=lifespan)
@@ -130,6 +141,7 @@ def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONRespo
     results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
 
     # Retry when MySQL rejects the query OR it returns empty results
+    last_valid_sql = sql_query
     retries_left = max_retries
     def _should_retry() -> bool:
         return results is None or (isinstance(results, list) and len(results) == 0)
@@ -146,13 +158,14 @@ def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONRespo
         is_safe, validation_error = ava.validate_read_only_sql(sql_query)
         if not is_safe:
             continue
+        last_valid_sql = sql_query
         results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
 
     response_text = ava.format_response(results, column_names, metadata)
 
     return {
         "input": arabic_text,
-        "sql": sql_query,
+        "sql": last_valid_sql,
         "response": response_text,
         "metadata": metadata,
     }
@@ -271,6 +284,109 @@ def export_csv(request: Request, sql: str = Form("")):
         headers["X-Export-Row-Limit"] = str(metadata["row_limit"])
 
     return Response(content=csv_content, media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@app.get("/data_status")
+def data_status(request: Request):
+    runtime = _runtime(request)
+    return {
+        "source": runtime["data_source"],
+        "tables": runtime["table_names"],
+        "test_mode": runtime["test_mode"],
+    }
+
+
+@app.post("/upload_data")
+async def upload_data(request: Request, files: list[UploadFile] = File(...)):
+    runtime = _runtime(request)
+
+    try:
+        file_data: list[tuple[str, bytes]] = []
+        for f in files:
+            content = await f.read()
+            file_data.append((f.filename or "data.csv", content))
+
+        async with request.app.state.runtime_lock:
+            # Always close old connection first, then drop its database
+            old_conn = runtime.get("db_connection")
+            if old_conn:
+                try:
+                    old_conn.close()
+                except Exception:
+                    pass
+
+            old_temp = runtime.get("temp_db_name")
+            if old_temp:
+                await asyncio.to_thread(drop_temp_database, old_temp)
+
+            connection, db_name, schema_string, table_names = await asyncio.to_thread(
+                create_database_from_files, file_data
+            )
+
+            runtime["db_connection"] = connection
+            runtime["db_schema"] = schema_string
+            runtime["test_mode"] = False
+            runtime["data_source"] = "uploaded"
+            runtime["temp_db_name"] = db_name
+            runtime["table_names"] = table_names
+
+        logger.info("User uploaded %d file(s), created DB '%s' with tables: %s", len(files), db_name, table_names)
+
+        return {
+            "success": True,
+            "db_name": db_name,
+            "tables": table_names,
+            "message": f"تم إنشاء {len(table_names)} جدول بنجاح",
+        }
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception:
+        logger.exception("Upload failed")
+        return JSONResponse({"error": "فشل في معالجة الملفات المرفوعة"}, status_code=500)
+
+
+@app.post("/reset_data")
+async def reset_data(request: Request):
+    runtime = _runtime(request)
+
+    async with request.app.state.runtime_lock:
+        # Always close old connection first, then drop its database
+        old_conn = runtime.get("db_connection")
+        if old_conn:
+            try:
+                old_conn.close()
+            except Exception:
+                pass
+
+        temp_db = runtime.get("temp_db_name")
+        if temp_db:
+            await asyncio.to_thread(drop_temp_database, temp_db)
+
+        # Reconnect to demo database
+        db_connection = await asyncio.to_thread(
+            ava.connect_to_db,
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            database=os.getenv("DB_NAME"),
+        )
+
+        if db_connection:
+            db_schema = await asyncio.to_thread(ava.get_db_schema, db_connection)
+            test_mode = False
+        else:
+            db_schema = ava.example_db_schema
+            test_mode = True
+
+        runtime["db_connection"] = db_connection
+        runtime["db_schema"] = db_schema
+        runtime["test_mode"] = test_mode
+        runtime["data_source"] = "demo"
+        runtime["temp_db_name"] = None
+        runtime["table_names"] = []
+
+    logger.info("Reset to demo database")
+    return {"success": True, "source": "demo", "message": "تم الرجوع إلى البيانات التجريبية"}
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@
   let analyser = null;
   let rafId = null;
   let barEls = micBars ? Array.from(micBars.querySelectorAll('.bar')) : [];
+  let ttsObjectUrl = null;
 
   // ────────────── Helpers ──────────────
   const setBusy = (busy) => {
@@ -492,7 +493,9 @@
         url = `data:audio/wav;base64,${b64}`;
       } else {
         const blob = await res.blob();
-        url = URL.createObjectURL(blob);
+        if (ttsObjectUrl) { URL.revokeObjectURL(ttsObjectUrl); }
+        ttsObjectUrl = URL.createObjectURL(blob);
+        url = ttsObjectUrl;
       }
       ttsAudio.src = url;
       btn.classList.remove('is-loading');
@@ -513,6 +516,152 @@
     btn.querySelector('.label').textContent = 'استمع للإجابة';
   });
 
+  // ────────────── Data Upload Modal ──────────────
+  const uploadModal    = $('upload-modal');
+  const dataSourceBtn  = $('data-source-btn');
+  const dataSourceLbl  = $('data-source-label');
+  const modalClose     = $('modal-close');
+  const uploadZone     = $('upload-zone');
+  const fileInput      = $('file-input');
+  const fileList       = $('upload-file-list');
+  const btnUpload      = $('btn-upload');
+  const btnReset       = $('btn-reset');
+  const uploadProgress = $('upload-progress');
+  const progressBar    = $('upload-progress-bar');
+  const progressText   = $('upload-progress-text');
+  const currentSrcText = $('current-source-text');
+  const dataStatusDot  = document.querySelector('.data-status-dot');
+
+  let selectedFiles = [];
+
+  const openModal = () => { uploadModal.hidden = false; fetchDataStatus(); };
+  const closeModal = () => { uploadModal.hidden = true; };
+
+  dataSourceBtn.addEventListener('click', openModal);
+  modalClose.addEventListener('click', closeModal);
+  uploadModal.addEventListener('click', (e) => { if (e.target === uploadModal) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !uploadModal.hidden) closeModal(); });
+
+  // Fetch current data status
+  const fetchDataStatus = async () => {
+    try {
+      const res = await fetch('/data_status');
+      const data = await res.json();
+      updateSourceUI(data.source, data.tables);
+    } catch { /* ignore */ }
+  };
+
+  const updateSourceUI = (source, tables) => {
+    if (source === 'uploaded') {
+      dataSourceLbl.textContent = `بيانات مرفوعة (${tables.length})`;
+      currentSrcText.textContent = `بيانات مرفوعة — ${tables.length} جدول`;
+      if (dataStatusDot) {
+        dataStatusDot.classList.remove('data-status-demo');
+        dataStatusDot.classList.add('data-status-uploaded');
+      }
+    } else {
+      dataSourceLbl.textContent = 'بيانات تجريبية';
+      currentSrcText.textContent = 'بيانات تجريبية';
+      if (dataStatusDot) {
+        dataStatusDot.classList.remove('data-status-uploaded');
+        dataStatusDot.classList.add('data-status-demo');
+      }
+    }
+  };
+
+  // File selection
+  let dragCounter = 0;
+  uploadZone.addEventListener('click', () => fileInput.click());
+  uploadZone.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); });
+  uploadZone.addEventListener('dragleave', () => { if (--dragCounter === 0) uploadZone.classList.remove('drag-over'); });
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    uploadZone.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  const handleFiles = (fileListObj) => {
+    selectedFiles = Array.from(fileListObj).filter(f =>
+      f.name.match(/\.(csv|xlsx|xls)$/i)
+    ).slice(0, 10);
+    renderFileList();
+    btnUpload.disabled = selectedFiles.length === 0;
+  };
+
+  const renderFileList = () => {
+    if (selectedFiles.length === 0) {
+      fileList.innerHTML = '';
+      return;
+    }
+    fileList.innerHTML = selectedFiles.map(f => {
+      const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+      return `<div class="upload-file-item"><span>${f.name}</span><span class="file-size">${sizeMB} MB</span></div>`;
+    }).join('');
+  };
+
+  // Upload
+  btnUpload.addEventListener('click', async () => {
+    if (selectedFiles.length === 0) return;
+    btnUpload.disabled = true;
+    uploadProgress.hidden = false;
+    progressBar.style.setProperty('--w', '0%');
+    progressText.textContent = 'جارٍ الرفع...';
+
+    const formData = new FormData();
+    selectedFiles.forEach(f => formData.append('files', f));
+
+    try {
+      const res = await fetch('/upload_data', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        progressBar.style.setProperty('--w', '100%');
+        progressText.textContent = data.message;
+        updateSourceUI('uploaded', data.tables);
+        selectedFiles = [];
+        renderFileList();
+        setTimeout(() => { uploadProgress.hidden = true; }, 2000);
+      } else {
+        progressText.textContent = data.error || 'فشل الرفع';
+        progressBar.style.setProperty('--w', '100%');
+        progressBar.classList.add('error');
+        setTimeout(() => { uploadProgress.hidden = true; progressBar.classList.remove('error'); }, 3000);
+      }
+    } catch {
+      progressText.textContent = 'خطأ في الاتصال';
+      setTimeout(() => { uploadProgress.hidden = true; }, 3000);
+    } finally {
+      btnUpload.disabled = selectedFiles.length === 0;
+    }
+  });
+
+  // Reset to demo
+  btnReset.addEventListener('click', async () => {
+    btnReset.disabled = true;
+    try {
+      const res = await fetch('/reset_data', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        updateSourceUI('demo', []);
+        selectedFiles = [];
+        renderFileList();
+      } else {
+        progressText.textContent = data.error || 'فشل الرجوع للبيانات التجريبية';
+        uploadProgress.hidden = false;
+        setTimeout(() => { uploadProgress.hidden = true; }, 3000);
+      }
+    } catch {
+      progressText.textContent = 'خطأ في الاتصال بالخادم';
+      uploadProgress.hidden = false;
+      setTimeout(() => { uploadProgress.hidden = true; }, 3000);
+    }
+    btnReset.disabled = false;
+  });
+
   // ────────────── Init ──────────────
   setMicState('idle');
+  fetchDataStatus();
 })();

@@ -10,3 +10,6 @@ supertonic>=0.3.0
 faster-whisper>=1.1.0
 sqlglot~=30.8.0
 num2words~=0.5.14
+pandas>=2.0.0
+openpyxl>=3.1.0
+xlrd>=2.0.1
