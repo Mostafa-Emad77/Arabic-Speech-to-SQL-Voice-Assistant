@@ -85,15 +85,27 @@
     openComposer(composerShell.dataset.open !== 'true');
   });
 
-  // ────────────── Suggestion chips ──────────────
-  document.querySelectorAll('.v-chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const text = chip.dataset.suggest || '';
-      textarea.value = text;
-      charN.textContent = text.length;
-      openComposer(true);
+  // ────────────── Suggestion chips (dynamic) ──────────────
+  const suggestionsContainer = $('voice-suggestions');
+  const chipSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+
+  const renderSuggestions = (items) => {
+    if (!items || items.length === 0) {
+      suggestionsContainer.innerHTML = '';
+      return;
+    }
+    suggestionsContainer.innerHTML = items.map(s =>
+      `<button type="button" class="v-chip" data-suggest="${s.query.replace(/"/g, '&quot;')}">${chipSvg} ${s.text}</button>`
+    ).join('');
+    suggestionsContainer.querySelectorAll('.v-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const text = chip.dataset.suggest || '';
+        textarea.value = text;
+        charN.textContent = text.length;
+        openComposer(true);
+      });
     });
-  });
+  };
 
   // ────────────── Char counter ──────────────
   textarea.addEventListener('input', () => {
@@ -517,30 +529,37 @@
   });
 
   // ────────────── Data Upload Modal ──────────────
-  const uploadModal    = $('upload-modal');
-  const dataSourceBtn  = $('data-source-btn');
-  const dataSourceLbl  = $('data-source-label');
-  const modalClose     = $('modal-close');
-  const uploadZone     = $('upload-zone');
-  const fileInput      = $('file-input');
-  const fileList       = $('upload-file-list');
-  const btnUpload      = $('btn-upload');
-  const btnReset       = $('btn-reset');
-  const uploadProgress = $('upload-progress');
-  const progressBar    = $('upload-progress-bar');
-  const progressText   = $('upload-progress-text');
-  const currentSrcText = $('current-source-text');
-  const dataStatusDot  = document.querySelector('.data-status-dot');
+  const dataSourceBtn   = $('data-source-btn');
+  const dataSourceLbl   = $('data-source-label');
+  const uploadZone      = $('upload-zone');
+  const fileInput       = $('file-input');
+  const fileList        = $('upload-file-list');
+  const btnUpload       = $('btn-upload');
+  const btnReset        = $('btn-reset');
+  const uploadProgress  = $('upload-progress');
+  const progressBar     = $('upload-progress-bar');
+  const progressText    = $('upload-progress-text');
+  const dataCardUpload  = $('data-card-upload');
+  const dataCardStatus  = $('data-card-status');
+  const dataCardText    = $('data-card-text');
+  const dataCardChange  = $('data-card-change');
+  const dataCardActions = $('data-card-actions');
 
   let selectedFiles = [];
 
-  const openModal = () => { uploadModal.hidden = false; fetchDataStatus(); };
-  const closeModal = () => { uploadModal.hidden = true; };
+  const showUploadZone = () => { dataCardUpload.hidden = false; dataCardStatus.hidden = true; };
+  const showStatusBar  = () => { dataCardUpload.hidden = true;  dataCardStatus.hidden = false; };
 
-  dataSourceBtn.addEventListener('click', openModal);
-  modalClose.addEventListener('click', closeModal);
-  uploadModal.addEventListener('click', (e) => { if (e.target === uploadModal) closeModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !uploadModal.hidden) closeModal(); });
+  dataSourceBtn.addEventListener('click', () => {
+    document.getElementById('data-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  dataCardChange.addEventListener('click', () => {
+    selectedFiles = [];
+    renderFileList();
+    dataCardActions.hidden = true;
+    uploadProgress.hidden = true;
+    showUploadZone();
+  });
 
   // Fetch current data status
   const fetchDataStatus = async () => {
@@ -548,24 +567,18 @@
       const res = await fetch('/data_status');
       const data = await res.json();
       updateSourceUI(data.source, data.tables);
+      if (data.suggestions) renderSuggestions(data.suggestions);
     } catch { /* ignore */ }
   };
 
   const updateSourceUI = (source, tables) => {
     if (source === 'uploaded') {
       dataSourceLbl.textContent = `بيانات مرفوعة (${tables.length})`;
-      currentSrcText.textContent = `بيانات مرفوعة — ${tables.length} جدول`;
-      if (dataStatusDot) {
-        dataStatusDot.classList.remove('data-status-demo');
-        dataStatusDot.classList.add('data-status-uploaded');
-      }
+      dataCardText.textContent = `بيانات مرفوعة — ${tables.length} جدول`;
+      showStatusBar();
     } else {
       dataSourceLbl.textContent = 'بيانات تجريبية';
-      currentSrcText.textContent = 'بيانات تجريبية';
-      if (dataStatusDot) {
-        dataStatusDot.classList.remove('data-status-uploaded');
-        dataStatusDot.classList.add('data-status-demo');
-      }
+      showUploadZone();
     }
   };
 
@@ -589,6 +602,7 @@
     ).slice(0, 10);
     renderFileList();
     btnUpload.disabled = selectedFiles.length === 0;
+    dataCardActions.hidden = selectedFiles.length === 0;
   };
 
   const renderFileList = () => {
@@ -624,6 +638,7 @@
         selectedFiles = [];
         renderFileList();
         setTimeout(() => { uploadProgress.hidden = true; }, 2000);
+        fetchDataStatus();
       } else {
         progressText.textContent = data.error || 'فشل الرفع';
         progressBar.style.setProperty('--w', '100%');
@@ -648,6 +663,7 @@
         updateSourceUI('demo', []);
         selectedFiles = [];
         renderFileList();
+        fetchDataStatus();
       } else {
         progressText.textContent = data.error || 'فشل الرجوع للبيانات التجريبية';
         uploadProgress.hidden = false;

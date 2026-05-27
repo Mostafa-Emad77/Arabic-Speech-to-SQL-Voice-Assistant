@@ -767,6 +767,62 @@ footer.foot {
 }
 .data-source-btn svg { flex-shrink: 0; }
 
+/* ════════════════════════ Inline Data Card ════════════════════════ */
+.data-card {
+  max-width: 480px;
+  margin: 0 auto 32px;
+  position: relative;
+  z-index: 1;
+}
+.data-card-upload[hidden] { display: none; }
+.data-card .upload-zone {
+  background: oklch(1 0 0 / 0.55);
+  padding: 28px 24px;
+}
+.data-card .upload-title {
+  margin: 4px 0 2px;
+  font-family: var(--f-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.data-card-actions {
+  display: flex;
+  margin-top: 8px;
+}
+.data-card-actions[hidden] { display: none; }
+.data-card-actions .btn-upload { width: 100%; }
+.data-card-status {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  padding: 14px 20px;
+  background: oklch(1 0 0 / 0.6);
+  border: 1px solid oklch(0.65 0.2 145 / 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+}
+.data-card-status[hidden] { display: none; }
+.data-card-info {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 600; color: var(--ink);
+}
+.data-card-btns { display: flex; gap: 8px; }
+.data-card-change-btn, .data-card-reset-btn {
+  padding: 6px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s ease;
+  border: none;
+}
+.data-card-change-btn {
+  background: var(--brand); color: #fff;
+}
+.data-card-change-btn:hover { filter: brightness(1.1); }
+.data-card-reset-btn {
+  background: transparent; color: var(--ink-2);
+  border: 1px solid var(--border);
+}
+.data-card-reset-btn:hover { background: var(--hover); }
+
 /* ════════════════════════ Upload Modal ════════════════════════ */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 9999;

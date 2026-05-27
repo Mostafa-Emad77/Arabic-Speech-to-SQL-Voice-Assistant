@@ -4,6 +4,7 @@ import csv
 import io
 import logging
 import os
+import re
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -286,6 +287,61 @@ def export_csv(request: Request, sql: str = Form("")):
     return Response(content=csv_content, media_type="text/csv; charset=utf-8", headers=headers)
 
 
+def _parse_schema_columns(db_schema: str) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Parse CREATE TABLE statements and return [(table_name, [(col_name, col_type)])]."""
+    tables: list[tuple[str, list[tuple[str, str]]]] = []
+    for block in re.split(r"(?=CREATE\s+TABLE)", db_schema, flags=re.IGNORECASE):
+        m = re.match(r"CREATE\s+TABLE\s+`?([^`\s(]+)`?\s*\((.*?)\);", block, re.IGNORECASE | re.DOTALL)
+        if not m:
+            continue
+        tname = m.group(1)
+        cols: list[tuple[str, str]] = []
+        for line in m.group(2).split("\n"):
+            line = line.strip().rstrip(",")
+            cm = re.match(r"`?([^`\s]+)`?\s+(\S+)", line)
+            if cm:
+                cols.append((cm.group(1), cm.group(2).upper()))
+        tables.append((tname, cols))
+    return tables
+
+
+def _generate_suggestions(db_schema: str) -> list[dict[str, str]]:
+    """Generate 3 Arabic question suggestions based on the current schema."""
+    tables = _parse_schema_columns(db_schema)
+    if not tables:
+        return []
+
+    suggestions: list[dict[str, str]] = []
+
+    for tname, cols in tables:
+        # Count question
+        suggestions.append({
+            "text": f"كم عدد السجلات في {tname}",
+            "query": f"كم عدد السجلات في جدول {tname}؟",
+        })
+
+        # Text columns → show distinct values
+        text_cols = [c for c, t in cols if "VARCHAR" in t or "TEXT" in t]
+        if text_cols:
+            col_display = " و".join(text_cols[:2])
+            suggestions.append({
+                "text": f"أظهر {col_display} من {tname}",
+                "query": f"أظهر {col_display} من جدول {tname}",
+            })
+
+        # Numeric columns → aggregate
+        num_cols = [c for c, t in cols if any(k in t for k in ("INT", "FLOAT", "DECIMAL", "DOUBLE"))]
+        # Exclude likely primary-key columns
+        num_cols = [c for c in num_cols if c.lower() not in ("id", "رقم")]
+        if num_cols:
+            suggestions.append({
+                "text": f"ما أعلى {num_cols[0]} في {tname}",
+                "query": f"ما هو أعلى {num_cols[0]} في جدول {tname}؟",
+            })
+
+    return suggestions[:3]
+
+
 @app.get("/data_status")
 def data_status(request: Request):
     runtime = _runtime(request)
@@ -293,6 +349,7 @@ def data_status(request: Request):
         "source": runtime["data_source"],
         "tables": runtime["table_names"],
         "test_mode": runtime["test_mode"],
+        "suggestions": _generate_suggestions(runtime["db_schema"]),
     }
 
 

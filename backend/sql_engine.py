@@ -12,15 +12,17 @@ logger = logging.getLogger(__name__)
 system_message = (
     "You are an Arabic text-to-SQL assistant for MySQL. "
     "Convert the user's Arabic request into one valid read-only SQL query using the provided schema.\n"
-    "Primary domain: employee data (employees and directly related tables).\n"
     "Rules:\n"
+    "- Use table and column names EXACTLY as they appear in the schema — character for character. "
+    "Do NOT add, remove, or alter any characters, including Arabic definite articles (ال). "
+    "For example, if the schema has a table named عملاء, never write العملاء.\n"
     "- Use only tables and columns that exist in the provided schema.\n"
-    "- Prefer employee-related tables when the question is about people, jobs, salaries, departments, or hiring.\n"
     "- When name columns exist in Arabic and English, prefer Arabic name columns for matching and filtering.\n"
     "- Keep Arabic filter values exactly as provided by the user; do not translate literals.\n"
     "- Use the correct joins based on key relationships in the schema.\n"
-    "- For oldest employees use ORDER BY hire_date ASC; for newest employees use ORDER BY hire_date DESC.\n"
-    "- Include hire_date in SELECT when sorting by hire_date.\n"
+    "- For aggregate ranking questions, obey MySQL ONLY_FULL_GROUP_BY: every non-aggregate expression in SELECT "
+    "must appear exactly in GROUP BY. Do not group only by an ID while selecting a name unless the name is also "
+    "included in GROUP BY.\n"
     "- Return SQL only, without explanations or markdown.\n"
 )
 
@@ -133,6 +135,139 @@ def generate_resp(messages: list[dict[str, str]]) -> str:
     return message_content
 
 
+def _schema_table_names(db_schema: str) -> set[str]:
+    return set(re.findall(r"CREATE\s+TABLE\s+`?([^`\s(]+)`?\s*\(", db_schema, re.IGNORECASE))
+
+
+def _repair_schema_identifier_variants(sql_query: str, db_schema: str) -> str:
+    table_names = _schema_table_names(db_schema)
+    repaired = sql_query
+
+    for table_name in sorted(table_names, key=len, reverse=True):
+        if table_name.startswith("ال"):
+            continue
+
+        article_variant = f"ال{table_name}"
+        repaired = re.sub(
+            rf"`{re.escape(article_variant)}`",
+            f"`{table_name}`",
+            repaired,
+        )
+        repaired = re.sub(
+            rf"(?<![\w\u0600-\u06FF`]){re.escape(article_variant)}(?![\w\u0600-\u06FF`])",
+            table_name,
+            repaired,
+        )
+
+    return repaired
+
+
+def _split_sql_list(value: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_quote: str | None = None
+
+    for char in value:
+        if in_quote:
+            current.append(char)
+            if char == in_quote:
+                in_quote = None
+            continue
+
+        if char in {"'", '"', "`"}:
+            in_quote = char
+            current.append(char)
+        elif char == "(":
+            depth += 1
+            current.append(char)
+        elif char == ")":
+            depth = max(0, depth - 1)
+            current.append(char)
+        elif char == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+
+    if current:
+        parts.append("".join(current).strip())
+    return [part for part in parts if part]
+
+
+def _strip_select_alias(expression: str) -> str:
+    expression = re.sub(r"\s+AS\s+[`\"\w\u0600-\u06FF]+$", "", expression, flags=re.IGNORECASE).strip()
+    expression = re.sub(r"\s+[`\"\w\u0600-\u06FF]+$", "", expression).strip()
+    return expression
+
+
+def _repair_only_full_group_by(sql_query: str) -> str:
+    select_match = re.search(r"\bSELECT\b\s+(.*?)\s+\bFROM\b", sql_query, re.IGNORECASE | re.DOTALL)
+    group_match = re.search(
+        r"\bGROUP\s+BY\b\s+(.*?)(?=\s+\bHAVING\b|\s+\bORDER\s+BY\b|\s+\bLIMIT\b|\s*;?\s*$)",
+        sql_query,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not select_match or not group_match:
+        return sql_query
+
+    group_items = _split_sql_list(group_match.group(1))
+    normalized_group_items = {item.lower().replace("`", "").strip() for item in group_items}
+    missing_items: list[str] = []
+
+    for item in _split_sql_list(select_match.group(1)):
+        expression = _strip_select_alias(item)
+        if re.search(r"\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\(", expression, re.IGNORECASE):
+            continue
+        if re.fullmatch(r"[\d.]+|'[^']*'|\"[^\"]*\"", expression):
+            continue
+
+        normalized_expression = expression.lower().replace("`", "").strip()
+        if normalized_expression and normalized_expression not in normalized_group_items:
+            missing_items.append(expression)
+            normalized_group_items.add(normalized_expression)
+
+    if not missing_items:
+        return sql_query
+
+    repaired_group_by = ", ".join(group_items + missing_items)
+    return sql_query[:group_match.start(1)] + repaired_group_by + sql_query[group_match.end(1):]
+
+
+def _repair_aggregate_order_by(sql_query: str) -> str:
+    if re.search(r"\bGROUP\s+BY\b", sql_query, re.IGNORECASE):
+        return sql_query
+
+    select_match = re.search(r"\bSELECT\b\s+(.*?)\s+\bFROM\b", sql_query, re.IGNORECASE | re.DOTALL)
+    order_match = re.search(r"\bORDER\s+BY\b\s+(.*?)(?=\s+\bLIMIT\b|\s*;?\s*$)", sql_query, re.IGNORECASE | re.DOTALL)
+    if not select_match or not order_match:
+        return sql_query
+    if not re.search(r"\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\(", order_match.group(1), re.IGNORECASE):
+        return sql_query
+
+    group_items: list[str] = []
+    for item in _split_sql_list(select_match.group(1)):
+        expression = _strip_select_alias(item)
+        if expression == "*":
+            continue
+        if re.search(r"\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\(", expression, re.IGNORECASE):
+            continue
+        if re.fullmatch(r"[\d.]+|'[^']*'|\"[^\"]*\"", expression):
+            continue
+        group_items.append(expression)
+
+    if not group_items:
+        return sql_query
+
+    return sql_query[:order_match.start()] + f"GROUP BY {', '.join(group_items)} " + sql_query[order_match.start():]
+
+
+def _post_process_sql(sql_query: str, db_schema: str) -> str:
+    repaired = _repair_schema_identifier_variants(sql_query, db_schema)
+    repaired = _repair_aggregate_order_by(repaired)
+    return _repair_only_full_group_by(repaired)
+
+
 def get_sql_query(db_schema: str, arabic_query: str) -> str:
     enhanced_system_message = (
         system_message
@@ -168,12 +303,12 @@ def get_sql_query(db_schema: str, arabic_query: str) -> str:
 
     match = re.search(r"```sql\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE)
     if match:
-        return match.group(1).strip()
+        return _post_process_sql(match.group(1).strip(), db_schema)
 
     sql_match = re.search(r"SELECT.*?;", response, re.DOTALL | re.IGNORECASE)
     if sql_match:
-        return sql_match.group(0).strip()
-    return response.strip()
+        return _post_process_sql(sql_match.group(0).strip(), db_schema)
+    return _post_process_sql(response.strip(), db_schema)
 
 
 def text_to_sql(text: str, db_schema: str, max_retries: int = 0) -> str:

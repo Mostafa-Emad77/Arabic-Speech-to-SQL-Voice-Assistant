@@ -21,8 +21,19 @@ In another terminal, confirm your model exists:
 ollama list
 ```
 
-## 3) Start Backend (FastAPI)
-From project root:
+## 3) Set Up Python Environment
+From project root, create and activate a virtual environment, then install dependencies:
+
+```pwsh
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
+```
+
+> Re-run `pip install -r backend/requirements.txt` whenever dependencies change. Activation (`.venv\Scripts\Activate.ps1`) is required in every new terminal session.
+
+## 4) Start Backend (FastAPI)
+From project root (with venv active):
 
 ```pwsh
 python backend/prestart_model_check.py --allow-download
@@ -32,10 +43,10 @@ python backend/main.py
 Alternative command:
 
 ```pwsh
-uvicorn backend.main:app --host 127.0.0.1 --port 5000
+uvicorn main:app --app-dir backend --host 127.0.0.1 --port 5000
 ```
 
-## 4) Open the app
+## 5) Open the app
 - http://127.0.0.1:5000
 
 ## Notes

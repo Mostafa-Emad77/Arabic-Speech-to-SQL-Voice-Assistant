@@ -47,6 +47,36 @@
         ويُعيد لك الإجابة نصّاً وصوتاً.
       </p>
 
+      <!-- ════ Inline Data Upload ════ -->
+      <div class="data-card" id="data-card">
+        <div class="data-card-upload" id="data-card-upload">
+          <div class="upload-zone" id="upload-zone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p class="upload-title">ارفع بياناتك وابدأ التحدث</p>
+            <p class="upload-hint">اسحب ملفات CSV أو Excel هنا أو اضغط للاختيار — حد أقصى ١٠ ملفات</p>
+            <input type="file" id="file-input" multiple accept=".csv,.xlsx,.xls" hidden />
+          </div>
+          <div class="upload-file-list" id="upload-file-list"></div>
+          <div class="upload-progress" id="upload-progress" hidden>
+            <div class="upload-progress-bar" id="upload-progress-bar"></div>
+            <span id="upload-progress-text">جارٍ الرفع...</span>
+          </div>
+          <div class="data-card-actions" id="data-card-actions" hidden>
+            <button type="button" class="btn-upload" id="btn-upload" disabled>رفع البيانات</button>
+          </div>
+        </div>
+        <div class="data-card-status" id="data-card-status" hidden>
+          <div class="data-card-info">
+            <span class="data-status-dot data-status-uploaded"></span>
+            <span id="data-card-text">بيانات مرفوعة</span>
+          </div>
+          <div class="data-card-btns">
+            <button type="button" class="data-card-change-btn" id="data-card-change">تغيير البيانات</button>
+            <button type="button" class="data-card-reset-btn" id="btn-reset">الرجوع للتجريبية</button>
+          </div>
+        </div>
+      </div>
+
       <div class="mic-stage">
         <div class="mic-wrap" id="mic-wrap">
           <span class="mic-halo" aria-hidden="true"></span>
@@ -79,20 +109,7 @@
           <span class="mic-timer" id="mic-timer" hidden>00:00</span>
         </div>
 
-        <div class="voice-suggestions" aria-label="أمثلة على الأسئلة">
-          <button type="button" class="v-chip" data-suggest="ما هو متوسط الراتب في كل قسم؟">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            متوسط الراتب في كل قسم
-          </button>
-          <button type="button" class="v-chip" data-suggest="عايز اعرف اخر واحد اتعين في قسم المبيعات ومرتبه كام">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            آخر موظف اتعيّن في المبيعات
-          </button>
-          <button type="button" class="v-chip" data-suggest="أسماء الموظفين في القسم الأقل رواتب">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            موظفين القسم الأقل رواتب
-          </button>
-        </div>
+        <div class="voice-suggestions" id="voice-suggestions" aria-label="أمثلة على الأسئلة"></div>
       </div>
     </section>
 
@@ -162,37 +179,6 @@
   </main>
 
   <audio id="tts-audio" preload="none"></audio>
-
-  <!-- ════ Data Source Modal ════ -->
-  <div class="modal-overlay" id="upload-modal" hidden>
-    <div class="modal-panel" role="dialog" aria-labelledby="modal-title" aria-modal="true">
-      <header class="modal-header">
-        <h2 id="modal-title">مصدر البيانات</h2>
-        <button type="button" class="modal-close" id="modal-close" aria-label="إغلاق">&times;</button>
-      </header>
-      <div class="modal-body">
-        <div class="data-status" id="data-status">
-          <span class="data-status-dot data-status-demo"></span>
-          <span>المصدر الحالي: <strong id="current-source-text">بيانات تجريبية</strong></span>
-        </div>
-        <div class="upload-zone" id="upload-zone">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <p>اسحب الملفات هنا أو اضغط للاختيار</p>
-          <p class="upload-hint">CSV أو Excel — حد أقصى ١٠ ملفات، ١٠ ميجابايت لكل ملف</p>
-          <input type="file" id="file-input" multiple accept=".csv,.xlsx,.xls" hidden />
-        </div>
-        <div class="upload-file-list" id="upload-file-list"></div>
-        <div class="upload-progress" id="upload-progress" hidden>
-          <div class="upload-progress-bar" id="upload-progress-bar"></div>
-          <span id="upload-progress-text">جارٍ الرفع...</span>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-upload" id="btn-upload" disabled>رفع البيانات</button>
-          <button type="button" class="btn-reset" id="btn-reset">الرجوع للتجريبية</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <script src="/static/app.js"></script>
 </body>
