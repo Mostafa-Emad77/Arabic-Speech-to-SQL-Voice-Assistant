@@ -50,13 +50,13 @@ def get_db_schema(connection: Any) -> str:
             cursor.execute(f"DESCRIBE `{safe_name}`")
             columns = cursor.fetchall()
 
-            table_schema = f"CREATE TABLE {table_name} (\n"
+            table_schema = f"CREATE TABLE `{table_name}` (\n"
             for col in columns:
                 col_name = col[0]
                 col_type = col[1]
                 nullable = "NOT NULL" if col[2] == "NO" else "NULL"
                 key = "PRIMARY KEY" if col[3] == "PRI" else ""
-                table_schema += f"    {col_name} {col_type} {nullable} {key},\n"
+                table_schema += f"    `{col_name}` {col_type} {nullable} {key},\n"
             table_schema = table_schema.rstrip(",\n") + "\n);"
             schema.append(table_schema)
 
@@ -197,24 +197,17 @@ def test_mode_query(query: str) -> tuple[list[tuple[str, int, str]], list[str]]:
     ], ["product_name", "price", "category"]
 
 
-example_db_schema = r"""{
-    'Company':
-      CREATE TABLE EMPLOYEES (
-    EMPLOYEE_ID    NUMBER(6) PRIMARY KEY,
-    FIRST_NAME_EN  VARCHAR2(20),
-    SECOND_NAME_EN VARCHAR2(20),
-    THIRD_NAME_EN  VARCHAR2(20),
-    LAST_NAME_EN   VARCHAR2(20),
-    FIRST_NAME_AR  NVARCHAR2(20),
-    SECOND_NAME_AR NVARCHAR2(20),
-    THIRD_NAME_AR  NVARCHAR2(20),
-    LAST_NAME_AR   NVARCHAR2(20),
-    EMAIL          VARCHAR2(50),
-    PHONE_NUMBER   VARCHAR2(20),
-    HIRE_DATE      DATE,
-    JOB_ID         VARCHAR2(10),
-    SALARY         NUMBER(8,2),
-    MANAGER_ID     NUMBER(6),
-    DEPARTMENT_ID  NUMBER(4)
-          Answer the following questions about this schema:
-}"""
+example_db_schema = """\
+CREATE TABLE `موظفون` (
+    `رقم_الموظف` INT NOT NULL PRIMARY KEY,
+    `الاسم` VARCHAR(100) NOT NULL,
+    `القسم` VARCHAR(50) NULL,
+    `الراتب` DECIMAL(10,2) NULL,
+    `تاريخ_التعيين` DATE NULL
+);
+
+CREATE TABLE `أقسام` (
+    `رقم_القسم` INT NOT NULL PRIMARY KEY,
+    `اسم_القسم` VARCHAR(100) NOT NULL,
+    `المدير` VARCHAR(100) NULL
+);"""

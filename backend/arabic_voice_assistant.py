@@ -69,14 +69,25 @@ def main() -> None:
 
             if input_mode == "v":
                 audio_file = record_audio()
-                arabic_text = transcribe_audio(transcriber, audio_file)
+                try:
+                    arabic_text = transcribe_audio(transcriber, audio_file)
+                finally:
+                    if os.path.exists(audio_file):
+                        os.unlink(audio_file)
                 print(f"Transcribed text: {arabic_text}")
             else:
                 print("Enter your question in Arabic:")
                 arabic_text = input()
                 print(f"Text input: {arabic_text}")
 
-            sql_query = text_to_sql(arabic_text, db_schema)
+            sql_query = None
+            for attempt in range(security_config.max_sql_retries + 1):
+                try:
+                    sql_query = text_to_sql(arabic_text, db_schema)
+                    break
+                except RuntimeError:
+                    if attempt < security_config.max_sql_retries:
+                        print(f"Retrying SQL generation ({attempt + 1}/{security_config.max_sql_retries})...")
             print(f"Generated SQL: {sql_query}")
 
             is_safe, validation_error = validate_read_only_sql(sql_query)

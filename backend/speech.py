@@ -46,6 +46,3 @@ def transcribe_audio(transcriber: Any, audio_file: str) -> str:
     except Exception as e:
         logger.error("Error in transcription: %s", e)
         return "لم أتمكن من فهم الكلام"
-    finally:
-        if os.path.exists(audio_file):
-            os.unlink(audio_file)

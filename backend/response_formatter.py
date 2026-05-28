@@ -6,6 +6,7 @@ from typing import Any
 from num2words import num2words
 
 _WESTERN_TO_ARABIC = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
+_ARABIC_CHAR = re.compile(r"[؀-ۿ]")
 
 _ARABIC_MONTHS = {
     1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
@@ -100,16 +101,16 @@ def _arabize_column(name: str) -> str:
     key = name.lower().strip()
     if key in _COLUMN_LABELS:
         return _COLUMN_LABELS[key]
-    # Handle common aggregate patterns like COUNT(*), SUM(salary)
-    agg_match = re.match(r"(count|sum|avg|min|max)\((.+)\)", key, re.IGNORECASE)
+    agg_match = re.match(r"(count|sum|avg|min|max)\(\s*(?:distinct\s+)?(.+?)\s*\)", key)
     if agg_match:
-        func = agg_match.group(1).lower()
+        func = agg_match.group(1)
         inner = agg_match.group(2).strip().strip("`\"'")
         func_labels = {"count": "عدد", "sum": "مجموع", "avg": "متوسط", "min": "أقل", "max": "أعلى"}
-        inner_label = _COLUMN_LABELS.get(inner.lower(), inner)
+        inner_label = _COLUMN_LABELS.get(inner, inner)
         return f"{func_labels.get(func, func)} {inner_label}"
-    # Fallback: replace underscores with spaces, keep as-is
-    return name.replace("_", " ")
+    if _ARABIC_CHAR.search(name):
+        return name
+    return re.sub(r"[_\-]+", " ", name).strip()
 
 
 def _format_date_arabic(value: Any) -> str | None:
