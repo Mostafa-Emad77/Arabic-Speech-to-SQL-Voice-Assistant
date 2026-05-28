@@ -129,44 +129,33 @@ def _execute_query_with_metadata(sql_query: str, runtime: dict[str, Any]) -> tup
 
 def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONResponse | dict[str, Any]:
     max_retries = runtime["security_config"].max_sql_retries
-    sql_query = ava.text_to_sql(
-        arabic_text,
-        runtime["db_schema"],
-        max_retries=max_retries,
-    )
+    sql_query = ""
+    results: list[tuple[Any, ...]] | None = None
+    column_names: list[str] | None = None
+    metadata: dict[str, Any] = {}
 
-    is_safe, validation_error = ava.validate_read_only_sql(sql_query)
-    if not is_safe:
-        return JSONResponse({"error": validation_error, "sql": sql_query}, status_code=400)
+    for attempt in range(max_retries + 1):
+        try:
+            sql_query = ava.text_to_sql(arabic_text, runtime["db_schema"])
+        except RuntimeError:
+            if attempt < max_retries:
+                logger.warning("SQL generation failed on attempt %d/%d, retrying...", attempt + 1, max_retries + 1)
+                continue
+            return JSONResponse({"error": "Failed to generate a valid SQL query."}, status_code=400)
 
-    results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
-
-    # Retry when MySQL rejects the query OR it returns empty results
-    last_valid_sql = sql_query
-    retries_left = max_retries
-    def _should_retry() -> bool:
-        return results is None or (isinstance(results, list) and len(results) == 0)
-
-    while _should_retry() and retries_left > 0:
-        retries_left -= 1
-        reason = "empty results" if results is not None else "DB execution failed"
-        logger.warning("Query returned %s, retrying with LLM (%d left)...", reason, retries_left)
-        sql_query = ava.text_to_sql(
-            arabic_text,
-            runtime["db_schema"],
-            max_retries=0,
-        )
-        is_safe, validation_error = ava.validate_read_only_sql(sql_query)
-        if not is_safe:
-            continue
-        last_valid_sql = sql_query
         results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
 
-    response_text = ava.format_response(results, column_names, metadata)
+        if results is not None and len(results) > 0:
+            break
 
+        if attempt < max_retries:
+            reason = "empty results" if results is not None else "DB execution failed"
+            logger.warning("Query returned %s on attempt %d/%d, retrying...", reason, attempt + 1, max_retries + 1)
+
+    response_text = ava.format_response(results, column_names, metadata)
     return {
         "input": arabic_text,
-        "sql": last_valid_sql,
+        "sql": sql_query,
         "response": response_text,
         "metadata": metadata,
     }

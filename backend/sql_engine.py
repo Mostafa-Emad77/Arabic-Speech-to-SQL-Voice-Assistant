@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import requests
+from sqlglot import exp, parse_one
 
 from database import validate_read_only_sql
 
@@ -162,104 +163,77 @@ def _repair_schema_identifier_variants(sql_query: str, db_schema: str) -> str:
     return repaired
 
 
-def _split_sql_list(value: str) -> list[str]:
-    parts: list[str] = []
-    current: list[str] = []
-    depth = 0
-    in_quote: str | None = None
-
-    for char in value:
-        if in_quote:
-            current.append(char)
-            if char == in_quote:
-                in_quote = None
-            continue
-
-        if char in {"'", '"', "`"}:
-            in_quote = char
-            current.append(char)
-        elif char == "(":
-            depth += 1
-            current.append(char)
-        elif char == ")":
-            depth = max(0, depth - 1)
-            current.append(char)
-        elif char == "," and depth == 0:
-            parts.append("".join(current).strip())
-            current = []
-        else:
-            current.append(char)
-
-    if current:
-        parts.append("".join(current).strip())
-    return [part for part in parts if part]
-
-
-def _strip_select_alias(expression: str) -> str:
-    expression = re.sub(r"\s+AS\s+[`\"\w\u0600-\u06FF]+$", "", expression, flags=re.IGNORECASE).strip()
-    expression = re.sub(r"\s+[`\"\w\u0600-\u06FF]+$", "", expression).strip()
-    return expression
-
-
 def _repair_only_full_group_by(sql_query: str) -> str:
-    select_match = re.search(r"\bSELECT\b\s+(.*?)\s+\bFROM\b", sql_query, re.IGNORECASE | re.DOTALL)
-    group_match = re.search(
-        r"\bGROUP\s+BY\b\s+(.*?)(?=\s+\bHAVING\b|\s+\bORDER\s+BY\b|\s+\bLIMIT\b|\s*;?\s*$)",
-        sql_query,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if not select_match or not group_match:
+    try:
+        stmt = parse_one(sql_query, read="mysql")
+    except Exception:
         return sql_query
 
-    group_items = _split_sql_list(group_match.group(1))
-    normalized_group_items = {item.lower().replace("`", "").strip() for item in group_items}
-    missing_items: list[str] = []
-
-    for item in _split_sql_list(select_match.group(1)):
-        expression = _strip_select_alias(item)
-        if re.search(r"\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\(", expression, re.IGNORECASE):
-            continue
-        if re.fullmatch(r"[\d.]+|'[^']*'|\"[^\"]*\"", expression):
-            continue
-
-        normalized_expression = expression.lower().replace("`", "").strip()
-        if normalized_expression and normalized_expression not in normalized_group_items:
-            missing_items.append(expression)
-            normalized_group_items.add(normalized_expression)
-
-    if not missing_items:
+    if not isinstance(stmt, exp.Select):
         return sql_query
 
-    repaired_group_by = ", ".join(group_items + missing_items)
-    return sql_query[:group_match.start(1)] + repaired_group_by + sql_query[group_match.end(1):]
+    group = stmt.args.get("group")
+    if not group:
+        return sql_query
+
+    group_sqls = {e.sql(dialect="mysql").lower() for e in group.expressions}
+    missing = []
+
+    for item in stmt.expressions:
+        inner = item.this if isinstance(item, exp.Alias) else item
+        if isinstance(inner, (exp.Star, exp.Literal, exp.Boolean, exp.Null)):
+            continue
+        if inner.find(exp.AggFunc):
+            continue
+        key = inner.sql(dialect="mysql").lower()
+        if key and key not in group_sqls:
+            missing.append(inner.copy())
+            group_sqls.add(key)
+
+    if not missing:
+        return sql_query
+
+    for expr in missing:
+        group.append("expressions", expr)
+
+    try:
+        return stmt.sql(dialect="mysql")
+    except Exception:
+        return sql_query
 
 
 def _repair_aggregate_order_by(sql_query: str) -> str:
-    if re.search(r"\bGROUP\s+BY\b", sql_query, re.IGNORECASE):
+    try:
+        stmt = parse_one(sql_query, read="mysql")
+    except Exception:
         return sql_query
 
-    select_match = re.search(r"\bSELECT\b\s+(.*?)\s+\bFROM\b", sql_query, re.IGNORECASE | re.DOTALL)
-    order_match = re.search(r"\bORDER\s+BY\b\s+(.*?)(?=\s+\bLIMIT\b|\s*;?\s*$)", sql_query, re.IGNORECASE | re.DOTALL)
-    if not select_match or not order_match:
+    if not isinstance(stmt, exp.Select):
         return sql_query
-    if not re.search(r"\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\(", order_match.group(1), re.IGNORECASE):
+    if stmt.args.get("group"):
         return sql_query
 
-    group_items: list[str] = []
-    for item in _split_sql_list(select_match.group(1)):
-        expression = _strip_select_alias(item)
-        if expression == "*":
+    order = stmt.args.get("order")
+    if not order or not order.find(exp.AggFunc):
+        return sql_query
+
+    group_cols = []
+    for item in stmt.expressions:
+        inner = item.this if isinstance(item, exp.Alias) else item
+        if isinstance(inner, (exp.Star, exp.Literal, exp.Boolean, exp.Null)):
             continue
-        if re.search(r"\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT)\s*\(", expression, re.IGNORECASE):
+        if inner.find(exp.AggFunc):
             continue
-        if re.fullmatch(r"[\d.]+|'[^']*'|\"[^\"]*\"", expression):
-            continue
-        group_items.append(expression)
+        group_cols.append(inner.copy())
 
-    if not group_items:
+    if not group_cols:
         return sql_query
 
-    return sql_query[:order_match.start()] + f"GROUP BY {', '.join(group_items)} " + sql_query[order_match.start():]
+    stmt.set("group", exp.Group(expressions=group_cols))
+    try:
+        return stmt.sql(dialect="mysql")
+    except Exception:
+        return sql_query
 
 
 def _post_process_sql(sql_query: str, db_schema: str) -> str:
@@ -311,17 +285,10 @@ def get_sql_query(db_schema: str, arabic_query: str) -> str:
     return _post_process_sql(response.strip(), db_schema)
 
 
-def text_to_sql(text: str, db_schema: str, max_retries: int = 0) -> str:
+def text_to_sql(text: str, db_schema: str) -> str:
     logger.info("Generating SQL query...")
-    last_query = ""
-    attempts = max_retries + 1
-    for attempt in range(attempts):
-        last_query = get_sql_query(db_schema, text)
-        is_safe, _ = validate_read_only_sql(last_query)
-        if is_safe:
-            return last_query
-        if attempt < max_retries:
-            logger.warning("SQL validation failed on attempt %d/%d, retrying...", attempt + 1, attempts)
-        else:
-            logger.warning("SQL validation failed on attempt %d/%d. All retries exhausted.", attempt + 1, attempts)
-    return last_query
+    query = get_sql_query(db_schema, text)
+    is_safe, error = validate_read_only_sql(query)
+    if not is_safe:
+        raise RuntimeError(f"Generated SQL did not pass safety validation: {error}")
+    return query

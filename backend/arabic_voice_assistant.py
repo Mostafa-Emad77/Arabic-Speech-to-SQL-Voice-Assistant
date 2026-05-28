@@ -76,7 +76,7 @@ def main() -> None:
                 arabic_text = input()
                 print(f"Text input: {arabic_text}")
 
-            sql_query = text_to_sql(arabic_text, db_schema, max_retries=security_config.max_sql_retries)
+            sql_query = text_to_sql(arabic_text, db_schema)
             print(f"Generated SQL: {sql_query}")
 
             is_safe, validation_error = validate_read_only_sql(sql_query)
