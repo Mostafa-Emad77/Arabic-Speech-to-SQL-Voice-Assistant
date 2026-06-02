@@ -203,8 +203,6 @@ DEBUG=false
 | `MAX_PROMPT_CHARS` | `1200` | Max characters in user prompt |
 | `TTS_VOICE` | `M1` | Supertonic voice preset |
 
-> **Never commit your `.env` file to version control.**
-
 ---
 
 ## Usage
