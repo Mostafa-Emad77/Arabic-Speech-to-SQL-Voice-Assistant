@@ -366,8 +366,9 @@ def generate_natural_response(
     ]
 
     try:
+        from response_formatter import numerals_to_arabic_words
         logger.info("Generating natural language response...")
-        return generate_resp(messages)
+        return numerals_to_arabic_words(generate_resp(messages))
     except Exception:
         logger.warning("Natural response generation failed, falling back to structured formatter.")
         return format_response(results, column_names, metadata)
@@ -379,7 +380,7 @@ def generate_natural_response_stream(
     column_names: list[str] | None,
     metadata: dict[str, Any] | None = None,
 ) -> Iterator[str]:
-    from response_formatter import format_response
+    from response_formatter import format_response, numerals_to_arabic_words
 
     if results is None:
         yield "حدث خطأ أثناء تنفيذ الاستعلام."
@@ -410,7 +411,17 @@ def generate_natural_response_stream(
 
     try:
         logger.info("Generating natural language response (streaming)...")
-        yield from generate_resp_stream(messages)
+        # Buffer by word boundaries so a number split across chunks is assembled
+        # before conversion (e.g. "5" + "000" → "5000" → "خمسة آلاف")
+        buf = ""
+        for chunk in generate_resp_stream(messages):
+            buf += chunk
+            last_space = buf.rfind(" ")
+            if last_space > 0:
+                safe, buf = buf[: last_space + 1], buf[last_space + 1 :]
+                yield numerals_to_arabic_words(safe)
+        if buf:
+            yield numerals_to_arabic_words(buf)
     except Exception:
         logger.warning("Streaming NL response failed, falling back to structured formatter.")
         yield format_response(results, column_names, metadata)

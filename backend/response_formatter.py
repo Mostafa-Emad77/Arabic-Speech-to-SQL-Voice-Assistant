@@ -156,6 +156,18 @@ def _format_value(value: Any) -> str:
     return str(value).translate(_WESTERN_TO_ARABIC)
 
 
+_NUMERAL_RE = re.compile(r"\b\d[\d,]*(?:\.\d+)?\b")
+
+
+def numerals_to_arabic_words(text: str) -> str:
+    """Replace standalone Western numerals in LLM-generated text with Arabic words."""
+    def _replace(m: re.Match) -> str:
+        cleaned = m.group(0).replace(",", "")
+        result = _number_to_arabic_words(cleaned)
+        return result if result is not None else m.group(0)
+    return _NUMERAL_RE.sub(_replace, text)
+
+
 def format_response(
     results: list[tuple[Any, ...]] | None,
     column_names: list[str] | None,
