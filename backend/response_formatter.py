@@ -140,15 +140,19 @@ def _format_date_arabic(value: Any) -> str | None:
 def _format_value(value: Any) -> str:
     if value is None:
         return "غير محدد"
-    # Try date first (datetime.date objects and date-like strings)
-    date_str = _format_date_arabic(value)
-    if date_str is not None:
-        return date_str
-    # Try number-to-words
+    if isinstance(value, (date, datetime)):
+        date_str = _format_date_arabic(value)
+        return date_str if date_str is not None else str(value)
+    if isinstance(value, (int, float, Decimal)):
+        arabic_words = _number_to_arabic_words(value)
+        return arabic_words if arabic_words is not None else str(value).translate(_WESTERN_TO_ARABIC)
+    if isinstance(value, str):
+        date_str = _format_date_arabic(value)
+        if date_str is not None:
+            return date_str
     arabic_words = _number_to_arabic_words(value)
     if arabic_words is not None:
         return arabic_words
-    # Fallback: convert any remaining Western digits to Arabic-Indic
     return str(value).translate(_WESTERN_TO_ARABIC)
 
 

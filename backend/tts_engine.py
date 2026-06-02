@@ -1,11 +1,7 @@
-import io
 import logging
 import os
 import tempfile
 from typing import Any
-
-import sounddevice as sd
-import soundfile as sf
 
 logger = logging.getLogger(__name__)
 
@@ -62,19 +58,6 @@ def initialize_local_arabic_tts() -> tuple[Any | None, Any | None]:
     except Exception as e:
         logger.error("Error loading Supertonic-3 Arabic TTS model: %s", e)
         return None, None
-
-
-def generate_speech_with_local_model(processor: Any, model: Any, text: str) -> bool:
-    try:
-        logger.info("Generating speech using Supertonic-3 Arabic TTS model...")
-        wav_bytes = _synthesize_to_wav_bytes(processor, model, text)
-        audio_data, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-        sd.play(audio_data, samplerate=sample_rate)
-        sd.wait()
-        return True
-    except Exception as e:
-        logger.error("Error generating speech with local model: %s", e)
-        return False
 
 
 def generate_speech_for_web(processor: Any, model: Any, text: str) -> bytes:

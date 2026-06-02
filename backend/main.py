@@ -152,7 +152,7 @@ def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONRespo
             reason = "empty results" if results is not None else "DB execution failed"
             logger.warning("Query returned %s on attempt %d/%d, retrying...", reason, attempt + 1, max_retries + 1)
 
-    response_text = ava.format_response(results, column_names, metadata)
+    response_text = ava.generate_natural_response(arabic_text, results, column_names, metadata)
     return {
         "input": arabic_text,
         "sql": sql_query,

@@ -1,24 +1,10 @@
 import logging
 import os
-import tempfile
 from typing import Any
 
 from faster_whisper import WhisperModel
-import sounddevice as sd
-import soundfile as sf
 
 logger = logging.getLogger(__name__)
-
-
-def record_audio(duration: int = 10, sample_rate: int = 16000) -> str:
-    print("Recording... Speak now")
-    audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1)
-    sd.wait()
-    print("Recording finished")
-
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    sf.write(temp_file.name, audio_data, sample_rate)
-    return temp_file.name
 
 
 def initialize_asr_model() -> Any | None:

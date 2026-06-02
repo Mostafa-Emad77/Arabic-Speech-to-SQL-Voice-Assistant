@@ -2,6 +2,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 import requests
 from sqlglot import exp, parse_one
@@ -292,3 +293,55 @@ def text_to_sql(text: str, db_schema: str) -> str:
     if not is_safe:
         raise RuntimeError(f"Generated SQL did not pass safety validation: {error}")
     return query
+
+
+_NL_SYSTEM = (
+    "أنت مساعد عربي. المستخدم طرح سؤالاً على قاعدة بيانات وفيما يلي النتائج. "
+    "أجب بجمل طبيعية بالعربية تُلخّص النتيجة مباشرةً، كأنك تُجيب شفهياً. "
+    "لا تذكر SQL أو الجداول أو الأعمدة بالاسم. "
+    "إذا كانت النتائج كثيرة اذكر العدد والقيم البارزة فقط. "
+    "أجب بالعربية حصراً."
+)
+
+_LLM_ROW_LIMIT = 30
+
+
+def generate_natural_response(
+    arabic_question: str,
+    results: list[tuple[Any, ...]] | None,
+    column_names: list[str] | None,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    from response_formatter import format_response
+
+    if results is None:
+        return "حدث خطأ أثناء تنفيذ الاستعلام."
+    if not results:
+        return "لم أجد أي نتائج لهذا الاستعلام."
+
+    rows = results[:_LLM_ROW_LIMIT]
+    header = " | ".join(column_names) if column_names else ""
+    body = "\n".join(
+        " | ".join("—" if v is None else str(v) for v in row)
+        for row in rows
+    )
+    data_block = f"{header}\n{body}" if header else body
+
+    meta = metadata or {}
+    if meta.get("overflow") or len(results) > _LLM_ROW_LIMIT:
+        shown = len(rows)
+        total = meta.get("returned_rows", len(results))
+        suffix = "+" if meta.get("overflow") else ""
+        data_block += f"\n(يُعرض {shown} من أصل {total}{suffix} صف)"
+
+    messages = [
+        {"role": "system", "content": _NL_SYSTEM},
+        {"role": "user", "content": f"السؤال: {arabic_question}\n\nالنتائج:\n{data_block}"},
+    ]
+
+    try:
+        logger.info("Generating natural language response...")
+        return generate_resp(messages)
+    except Exception:
+        logger.warning("Natural response generation failed, falling back to structured formatter.")
+        return format_response(results, column_names, metadata)
