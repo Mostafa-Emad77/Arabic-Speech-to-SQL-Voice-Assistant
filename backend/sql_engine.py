@@ -1,8 +1,9 @@
+import json
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import requests
 from sqlglot import exp, parse_one
@@ -135,6 +136,31 @@ def generate_resp(messages: list[dict[str, str]]) -> str:
     if not message_content:
         raise RuntimeError(f"Ollama response did not include message content{_get_ollama_log_tail()}")
     return message_content
+
+
+def generate_resp_stream(messages: list[dict[str, str]]) -> Iterator[str]:
+    api_url = f"{get_ollama_base_url()}/api/chat"
+    payload = {
+        "model": get_ollama_model(),
+        "messages": messages,
+        "think": get_ollama_think(),
+        "stream": True,
+        "options": {"temperature": 0.1, "top_p": 0.8, "num_predict": 1024},
+    }
+    try:
+        with requests.post(api_url, json=payload, stream=True, timeout=120) as resp:
+            resp.raise_for_status()
+            for raw in resp.iter_lines():
+                if not raw:
+                    continue
+                data = json.loads(raw)
+                if data.get("done"):
+                    break
+                content = data.get("message", {}).get("content", "")
+                if content:
+                    yield content
+    except Exception as exc:
+        raise RuntimeError(f"Ollama streaming request failed: {exc}{_get_ollama_log_tail()}") from exc
 
 
 def _schema_table_names(db_schema: str) -> set[str]:
@@ -345,3 +371,46 @@ def generate_natural_response(
     except Exception:
         logger.warning("Natural response generation failed, falling back to structured formatter.")
         return format_response(results, column_names, metadata)
+
+
+def generate_natural_response_stream(
+    arabic_question: str,
+    results: list[tuple[Any, ...]] | None,
+    column_names: list[str] | None,
+    metadata: dict[str, Any] | None = None,
+) -> Iterator[str]:
+    from response_formatter import format_response
+
+    if results is None:
+        yield "حدث خطأ أثناء تنفيذ الاستعلام."
+        return
+    if not results:
+        yield "لم أجد أي نتائج لهذا الاستعلام."
+        return
+
+    rows = results[:_LLM_ROW_LIMIT]
+    header = " | ".join(column_names) if column_names else ""
+    body = "\n".join(
+        " | ".join("—" if v is None else str(v) for v in row)
+        for row in rows
+    )
+    data_block = f"{header}\n{body}" if header else body
+
+    meta = metadata or {}
+    if meta.get("overflow") or len(results) > _LLM_ROW_LIMIT:
+        shown = len(rows)
+        total = meta.get("returned_rows", len(results))
+        suffix = "+" if meta.get("overflow") else ""
+        data_block += f"\n(يُعرض {shown} من أصل {total}{suffix} صف)"
+
+    messages = [
+        {"role": "system", "content": _NL_SYSTEM},
+        {"role": "user", "content": f"السؤال: {arabic_question}\n\nالنتائج:\n{data_block}"},
+    ]
+
+    try:
+        logger.info("Generating natural language response (streaming)...")
+        yield from generate_resp_stream(messages)
+    except Exception:
+        logger.warning("Streaming NL response failed, falling back to structured formatter.")
+        yield format_response(results, column_names, metadata)

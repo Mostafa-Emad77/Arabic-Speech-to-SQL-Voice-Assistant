@@ -2,6 +2,7 @@ import asyncio
 import base64
 import csv
 import io
+import json
 import logging
 import os
 import re
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 import arabic_voice_assistant as ava
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -127,7 +128,9 @@ def _execute_query_with_metadata(sql_query: str, runtime: dict[str, Any]) -> tup
     )
 
 
-def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONResponse | dict[str, Any]:
+def _run_query_pipeline(
+    arabic_text: str, runtime: dict[str, Any]
+) -> tuple[str, list[tuple[Any, ...]] | None, list[str] | None, dict[str, Any]]:
     max_retries = runtime["security_config"].max_sql_retries
     sql_query = ""
     results: list[tuple[Any, ...]] | None = None
@@ -141,7 +144,7 @@ def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONRespo
             if attempt < max_retries:
                 logger.warning("SQL generation failed on attempt %d/%d, retrying...", attempt + 1, max_retries + 1)
                 continue
-            return JSONResponse({"error": "Failed to generate a valid SQL query."}, status_code=400)
+            raise ValueError("Failed to generate a valid SQL query.")
 
         results, column_names, metadata = _execute_query_with_metadata(sql_query, runtime)
 
@@ -152,18 +155,30 @@ def _process_arabic_text(arabic_text: str, runtime: dict[str, Any]) -> JSONRespo
             reason = "empty results" if results is not None else "DB execution failed"
             logger.warning("Query returned %s on attempt %d/%d, retrying...", reason, attempt + 1, max_retries + 1)
 
-    response_text = ava.generate_natural_response(arabic_text, results, column_names, metadata)
-    return {
-        "input": arabic_text,
-        "sql": sql_query,
-        "response": response_text,
-        "metadata": metadata,
-    }
+    return sql_query, results, column_names, metadata
+
+
+def _stream_pipeline(arabic_text: str, runtime: dict[str, Any]):
+    try:
+        sql_query, results, column_names, metadata = _run_query_pipeline(arabic_text, runtime)
+    except ValueError as e:
+        yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        return
+
+    yield f"data: {json.dumps({'type': 'sql', 'input': arabic_text, 'sql': sql_query, 'metadata': metadata})}\n\n"
+
+    for chunk in ava.generate_natural_response_stream(arabic_text, results, column_names, metadata):
+        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+
+    yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
 
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(FRONTEND_FILE)
+
+
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
 @app.post("/process_text")
@@ -175,11 +190,11 @@ def process_text(request: Request, text: str = Form("")):
     if not is_prompt_safe:
         return JSONResponse({"error": prompt_error}, status_code=400)
 
-    try:
-        return _process_arabic_text(arabic_text, runtime)
-    except Exception:
-        logger.exception("Text processing failed")
-        return JSONResponse({"error": "Failed to process text request"}, status_code=500)
+    return StreamingResponse(
+        _stream_pipeline(arabic_text, runtime),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
 
 
 @app.post("/process_audio")
@@ -205,7 +220,11 @@ def process_audio(request: Request, audio: str = Form("")):
         if not is_prompt_safe:
             return JSONResponse({"error": prompt_error}, status_code=400)
 
-        return _process_arabic_text(arabic_text, runtime)
+        return StreamingResponse(
+            _stream_pipeline(arabic_text, runtime),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
     except Exception:
         logger.exception("Audio processing failed")
         return JSONResponse({"error": "Failed to process audio request"}, status_code=500)

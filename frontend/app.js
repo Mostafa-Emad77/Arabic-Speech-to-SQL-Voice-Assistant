@@ -112,6 +112,36 @@
     charN.textContent = textarea.value.length;
   });
 
+  // ────────────── SSE stream consumer ──────────────
+  const consumeStream = async (res) => {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sqlData = null;
+    let responseText = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event;
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+          if (event.type === 'error') { renderError(event.error || 'حدث خطأ'); return; }
+          if (event.type === 'sql')   { sqlData = event; renderResultShell(event); }
+          if (event.type === 'chunk') { responseText += event.text; updateStreamingText(responseText); }
+          if (event.type === 'done')  { finalizeResult(sqlData, responseText); }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+
   // ────────────── Submit (text) ──────────────
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -129,9 +159,8 @@
       const body = new FormData();
       body.append('text', text);
       const res = await fetch('/process_text', { method: 'POST', body });
-      const data = await res.json();
-      if (!res.ok || data.error) renderError(data.error || `خطأ في الخادم (${res.status})`);
-      else renderResult(data);
+      if (!res.ok) { const d = await res.json().catch(() => ({})); renderError(d.error || `خطأ في الخادم (${res.status})`); return; }
+      await consumeStream(res);
     } catch {
       renderError('تعذّر الاتصال بالخادم. تحقّق من اتصالك ثم حاول مجدّداً.');
     } finally {
@@ -255,9 +284,8 @@
       const body = new FormData();
       body.append('audio', base64);
       const res = await fetch('/process_audio', { method: 'POST', body });
-      const data = await res.json();
-      if (!res.ok || data.error) renderError(data.error || `خطأ في الخادم (${res.status})`);
-      else renderResult(data);
+      if (!res.ok) { const d = await res.json().catch(() => ({})); renderError(d.error || `خطأ في الخادم (${res.status})`); return; }
+      await consumeStream(res);
     } catch {
       renderError('تعذّر معالجة التسجيل الصوتي.');
     } finally {
@@ -340,47 +368,18 @@
     showError('حدث خطأ', msg);
   };
 
-  const renderResult = (data) => {
+  // Renders input echo + SQL block + empty streaming response area
+  const renderResultShell = (event) => {
     emptyState.hidden = true;
-    const inputText  = data.input    ?? '';
-    const sqlText    = data.sql      ?? '';
-    const responseTx = data.response ?? '';
-    const metadata   = data.metadata ?? {};
-    const rowLimit   = Number(metadata.row_limit || 0);
-    const overflow   = Boolean(metadata.overflow);
-    const csvExportAvailable = Boolean(metadata.csv_export_available);
-
-    const overflowHtml = overflow ? `
-          <div class="overflow-note" role="status">
-            <span>تم عرض أول ${rowLimit || 'عدد محدود من'} الصفوف فقط.</span>
-            ${csvExportAvailable ? `
-            <button type="button" class="btn-export" id="download-csv-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <span class="label">تنزيل CSV</span>
-            </button>` : ''}
-          </div>` : '';
-
+    const inputText = event.input ?? '';
+    const sqlText   = event.sql   ?? '';
     results.innerHTML = `
       <div class="result-block">
-        <div class="sec-head">
-          <span class="sec-num">٠١</span>
-          <h3 class="sec-title">ما فهمه النظام</h3>
-          <span class="sec-divider"></span>
-        </div>
-        <div class="card understood">
-          <p class="understood-text">${escapeHtml(inputText) || '<em>—</em>'}</p>
-        </div>
+        <div class="sec-head"><span class="sec-num">٠١</span><h3 class="sec-title">ما فهمه النظام</h3><span class="sec-divider"></span></div>
+        <div class="card understood"><p class="understood-text">${escapeHtml(inputText) || '<em>—</em>'}</p></div>
       </div>
       <div class="result-block">
-        <div class="sec-head">
-          <span class="sec-num">٠٢</span>
-          <h3 class="sec-title">استعلام SQL</h3>
-          <span class="sec-divider"></span>
-        </div>
+        <div class="sec-head"><span class="sec-num">٠٢</span><h3 class="sec-title">استعلام SQL</h3><span class="sec-divider"></span></div>
         <div class="sql-card">
           <div class="sql-head">
             <span class="sql-dots"><span></span><span></span><span></span></span>
@@ -390,46 +389,73 @@
               <span id="copy-label">نسخ</span>
             </button>
           </div>
-          <pre class="sql-code" id="sql-pre">${highlightSQL(sqlText)}</pre>
+          <pre class="sql-code">${highlightSQL(sqlText)}</pre>
         </div>
       </div>
       <div class="result-block">
-        <div class="sec-head">
-          <span class="sec-num">٠٣</span>
-          <h3 class="sec-title">النتيجة</h3>
-          <span class="sec-divider"></span>
-        </div>
+        <div class="sec-head"><span class="sec-num">٠٣</span><h3 class="sec-title">النتيجة</h3><span class="sec-divider"></span></div>
         <div class="card result">
-          <p class="result-text" id="response-text">${escapeHtml(responseTx) || '<em>لا توجد إجابة.</em>'}</p>
-          ${overflowHtml}
-          <div class="audio-row">
-            <button type="button" class="btn-audio" id="play-btn" ${responseTx ? '' : 'disabled'}>
-              <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-              <svg class="icon-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              <span class="equalizer" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-              <span class="label">استمع للإجابة</span>
-            </button>
-            <span class="audio-meta">TEXT-TO-SPEECH · AR</span>
-          </div>
+          <p class="result-text streaming" id="response-text"></p>
         </div>
-      </div>
-    `;
-    const copyBtn = $('copy-btn');
+      </div>`;
+    const copyBtn   = $('copy-btn');
     const copyLabel = $('copy-label');
     copyBtn?.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(sqlText);
         copyLabel.textContent = 'تم النسخ ✓';
         setTimeout(() => (copyLabel.textContent = 'نسخ'), 1500);
-      } catch {
-        copyLabel.textContent = 'تعذّر النسخ';
-      }
+      } catch { copyLabel.textContent = 'تعذّر النسخ'; }
     });
-    const playBtn = $('play-btn');
-    playBtn?.addEventListener('click', () => playTTS(responseTx, playBtn));
+  };
 
-    const downloadCsvBtn = $('download-csv-btn');
-    downloadCsvBtn?.addEventListener('click', () => downloadCsv(downloadCsvBtn, sqlText));
+  // Appends streamed text to the response paragraph
+  const updateStreamingText = (text) => {
+    const el = $('response-text');
+    if (el) el.textContent = text;
+  };
+
+  // Called once streaming is done — removes cursor, wires TTS + CSV buttons
+  const finalizeResult = (sqlData, responseText) => {
+    const el = $('response-text');
+    if (el) el.classList.remove('streaming');
+
+    const metadata          = sqlData?.metadata ?? {};
+    const sqlText           = sqlData?.sql ?? '';
+    const overflow          = Boolean(metadata.overflow);
+    const csvExportAvailable = Boolean(metadata.csv_export_available);
+    const rowLimit          = Number(metadata.row_limit || 0);
+
+    const resultCard = el?.closest('.card.result');
+    if (!resultCard) return;
+
+    if (overflow) {
+      const note = document.createElement('div');
+      note.className = 'overflow-note';
+      note.setAttribute('role', 'status');
+      note.innerHTML = `<span>تم عرض أول ${rowLimit || 'عدد محدود من'} الصفوف فقط.</span>${
+        csvExportAvailable
+          ? `<button type="button" class="btn-export" id="download-csv-btn">
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+               <span class="label">تنزيل CSV</span></button>`
+          : ''
+      }`;
+      resultCard.appendChild(note);
+      $('download-csv-btn')?.addEventListener('click', (ev) => downloadCsv(ev.currentTarget, sqlText));
+    }
+
+    const audioRow = document.createElement('div');
+    audioRow.className = 'audio-row';
+    audioRow.innerHTML = `
+      <button type="button" class="btn-audio" id="play-btn" ${responseText ? '' : 'disabled'}>
+        <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="icon-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span class="equalizer" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span class="label">استمع للإجابة</span>
+      </button>
+      <span class="audio-meta">TEXT-TO-SPEECH · AR</span>`;
+    resultCard.appendChild(audioRow);
+    $('play-btn')?.addEventListener('click', (ev) => playTTS(responseText, ev.currentTarget));
   };
 
   const downloadCsv = async (btn, sqlQuery) => {

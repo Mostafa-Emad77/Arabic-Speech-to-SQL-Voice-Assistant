@@ -10,7 +10,7 @@ from database import (
 )
 from response_formatter import format_response
 from speech import initialize_asr_model, transcribe_audio
-from sql_engine import check_ollama_connection, generate_natural_response, text_to_sql
+from sql_engine import check_ollama_connection, generate_natural_response, generate_natural_response_stream, text_to_sql
 from tts_engine import generate_speech_for_web, initialize_local_arabic_tts
 
 __all__ = [
@@ -19,6 +19,7 @@ __all__ = [
     "execute_query_with_metadata",
     "format_response",
     "generate_natural_response",
+    "generate_natural_response_stream",
     "generate_speech_for_web",
     "get_db_schema",
     "initialize_models",
